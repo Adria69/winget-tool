@@ -2108,7 +2108,7 @@ static int ce_write_entry(git_hash_ctx *c, int fd, struct cache_entry *ce,
 			  struct strbuf *previous_name, struct ondisk_cache_entry *ondisk)
 {
 	int size;
-	int saved_namelen = saved_namelen; /* compiler workaround */
+	FAKE_INIT(int, saved_namelen, 0);
 	int result;
 	static unsigned char padding[8] = { 0x00 };
 
