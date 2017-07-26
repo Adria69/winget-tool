@@ -172,6 +172,10 @@ test_config () {
 		rm -rf tmp.git &&
 		test_must_fail git clone --bare "$url" tmp.git
 	'
+
+	test_expect_success 'unset protocol.allow' '
+		git config --global --unset protocol.allow
+	'
 }
 
 # test cloning a particular protocol

@@ -835,6 +835,9 @@ struct child_process *git_connect(int fd[2], const char *url,
 				return NULL;
 			}
 
+			if (ssh_host[0] == '-')
+				die("strange hostname '%s' blocked", ssh_host);
+
 			ssh = get_ssh_command();
 			if (ssh)
 				handle_ssh_variant(ssh, 1, &port_option,
