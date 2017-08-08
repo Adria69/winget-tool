@@ -182,6 +182,10 @@ test_proto () {
 	test_whitelist "$@"
 
 	test_config "$@"
+
+	test_expect_success 'unset protocol.allow' '
+		git config --global --unset protocol.allow
+	'
 }
 
 # set up an ssh wrapper that will access $host/$repo in the
