@@ -45,7 +45,8 @@ struct cached_dir {
 
 static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 	const char *path, int len, struct untracked_cache_dir *untracked,
-	int check_only, const struct pathspec *pathspec);
+	int check_only, int stop_at_first_file,
+	const struct pathspec *pathspec);
 static int get_dtype(struct dirent *de, const char *path, int len);
 
 int fspathcmp(const char *a, const char *b)
@@ -1323,6 +1324,21 @@ static enum path_treatment treat_directory(struct dir_struct *dir,
 	case index_nonexistent:
 		if (dir->flags & DIR_SHOW_OTHER_DIRECTORIES)
 			break;
+		if (exclude &&
+			(dir->flags & DIR_SHOW_IGNORED_TOO) &&
+			(dir->flags & DIR_SHOW_IGNORED_DIRECTORY)) {
+
+			/*
+			 * This is an excluded directory, and we are only
+			 * showing the name of a excluded directory.
+			 * Check to see if there are any contained files
+			 * to determine if the directory is empty or not.
+			 */
+			if (read_directory_recursive(dir, dirname, len,
+				untracked, 1, 1, pathspec) == path_excluded)
+				return path_excluded;
+			return path_none;
+		}
 		if (!(dir->flags & DIR_NO_GITLINKS)) {
 			unsigned char sha1[20];
 			if (resolve_gitlink_ref(dirname, "HEAD", sha1) == 0)
@@ -1332,15 +1348,15 @@ static enum path_treatment treat_directory(struct dir_struct *dir,
 	}
 
 	/* This is the "show_other_directories" case */
-
 	if (!(dir->flags & DIR_HIDE_EMPTY_DIRECTORIES))
 		return exclude ? path_excluded : path_untracked;
 
 	untracked = lookup_untracked(dir->untracked, untracked,
 				     dirname + baselen, len - baselen);
 	return read_directory_recursive(dir, dirname, len,
-					untracked, 1, pathspec);
+					untracked, 1, 0, pathspec);
 }
+
 
 /*
  * This is an inexact early pruning of any recursive directory
@@ -1562,7 +1578,7 @@ static enum path_treatment treat_path_fast(struct dir_struct *dir,
 		 * with check_only set.
 		 */
 		return read_directory_recursive(dir, path->buf, path->len,
-						cdir->ucd, 1, pathspec);
+						cdir->ucd, 1, 0, pathspec);
 	/*
 	 * We get path_recurse in the first run when
 	 * directory_exists_in_index() returns index_nonexistent. We
@@ -1723,7 +1739,8 @@ static void close_cached_dir(struct cached_dir *cdir)
  */
 static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 				    const char *base, int baselen,
-				    struct untracked_cache_dir *untracked, int check_only,
+				    struct untracked_cache_dir *untracked,
+				    int check_only, int stop_at_first_file,
 				    const struct pathspec *pathspec)
 {
 	struct cached_dir cdir;
@@ -1755,12 +1772,32 @@ static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 			subdir_state =
 				read_directory_recursive(dir, path.buf,
 							 path.len, ud,
-							 check_only, pathspec);
+							 check_only, stop_at_first_file, pathspec);
 			if (subdir_state > dir_state)
 				dir_state = subdir_state;
 		}
 
 		if (check_only) {
+			if (stop_at_first_file) {
+				/*
+				 * In general, if we are stopping at the first found file,
+				 * We can only signal that a path of at least "excluded" was
+				 * found. If the first file we find is "excluded" - there might
+				 * be other untracked files later on that will not be searched.
+				 *
+				 * In current usage of this function, stop_at_first_file will
+				 * only be set when called from a directory that matches the
+				 * exclude pattern - there should be no untracked files -
+				 * all contents should be marked as excluded.
+				 */
+				if (dir_state == path_excluded)
+					break;
+				else if (dir_state > path_excluded) {
+					dir_state = path_excluded;
+					break;
+				}
+			}
+
 			/* abort early if maximum state has been reached */
 			if (dir_state == path_untracked) {
 				if (cdir.fdir)
@@ -2022,9 +2059,10 @@ int read_directory(struct dir_struct *dir, const char *path,
 		 */
 		dir->untracked = NULL;
 	if (!len || treat_leading_path(dir, path, len, pathspec))
-		read_directory_recursive(dir, path, len, untracked, 0, pathspec);
+		read_directory_recursive(dir, path, len, untracked, 0, 0, pathspec);
 	QSORT(dir->entries, dir->nr, cmp_name);
 	QSORT(dir->ignored, dir->ignored_nr, cmp_name);
+
 	if (dir->untracked) {
 		static struct trace_key trace_untracked_stats = TRACE_KEY_INIT(UNTRACKED_STATS);
 		trace_printf_key(&trace_untracked_stats,
