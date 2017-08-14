@@ -1004,9 +1004,6 @@ case $(uname -s) in
 	find () {
 		/usr/bin/find "$@"
 	}
-	sum () {
-		md5sum "$@"
-	}
 	# git sees Windows-style pwd
 	pwd () {
 		builtin pwd -W
