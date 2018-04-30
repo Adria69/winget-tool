@@ -1076,6 +1076,29 @@ static int resolve_remote_submodule_branch(int argc, const char **argv,
 	return 0;
 }
 
+/*
+ * Exit non-zero if any of the submodule names given on the command line is
+ * invalid. If no names are given, filter stdin to print only valid names
+ * (which is primarily intended for testing).
+ */
+static int check_name(int argc, const char **argv, const char *prefix)
+{
+	if (argc > 1) {
+		while (*++argv) {
+			if (check_submodule_name(*argv) < 0)
+				return 1;
+		}
+	} else {
+		struct strbuf buf = STRBUF_INIT;
+		while (strbuf_getline(&buf, stdin) != EOF) {
+			if (!check_submodule_name(buf.buf))
+				printf("%s\n", buf.buf);
+		}
+		strbuf_release(&buf);
+	}
+	return 0;
+}
+
 struct cmd_struct {
 	const char *cmd;
 	int (*fn)(int, const char **, const char *);
@@ -1090,7 +1113,8 @@ static struct cmd_struct commands[] = {
 	{"resolve-relative-url", resolve_relative_url},
 	{"resolve-relative-url-test", resolve_relative_url_test},
 	{"init", module_init},
-	{"remote-branch", resolve_remote_submodule_branch}
+	{"remote-branch", resolve_remote_submodule_branch},
+	{"check-name", check_name}
 };
 
 int cmd_submodule__helper(int argc, const char **argv, const char *prefix)
