@@ -7,7 +7,7 @@ struct test_data {
 };
 
 static struct test_data data[] = {
-	{ "abc", "abc", 0 },
+	{ "abc", "abc", 3 },
 	{ "abc", "def", 0 },
 
 	{ "abc", "abz", 2 },
@@ -22,8 +22,9 @@ static struct test_data data[] = {
 int try_pair(const char *sa, const char *sb, int first_change)
 {
 	int failed = 0;
-	int offset, r_exp, r_tst;
-	
+	size_t offset;
+	int r_exp, r_tst;
+
 	r_exp = strcmp(sa, sb);
 	r_tst = strcmp_offset(sa, sb, &offset);
 	if (r_tst != r_exp) {
@@ -33,13 +34,13 @@ int try_pair(const char *sa, const char *sb, int first_change)
 	}
 	if (offset != first_change) {
 		error("FAIL: '%s' vs '%s', offset expect %d, observed %d\n",
-			  sa, sb, first_change, offset);
+			  sa, sb, first_change, (int)offset);
 		failed = 1;
 	}
 
 	return failed;
 }
-	
+
 int cmd_main(int argc, const char **argv)
 {
 	int failed = 0;

@@ -929,29 +929,19 @@ static int has_file_name(struct index_state *istate,
 /*
  * Like strcmp(), but also return the offset of the first change.
  */
-int strcmp_offset(const char *s1_in, const char *s2_in, int *first_change)
+int strcmp_offset(const char *s1, const char *s2, size_t *first_change)
 {
-	const unsigned char *s1 = (const unsigned char *)s1_in;
-	const unsigned char *s2 = (const unsigned char *)s2_in;
-	int diff = 0;
-	int k;
+	size_t k;
 
-	*first_change = 0;
-	for (k=0; s1[k]; k++)
-		if ((diff = (s1[k] - s2[k])))
-			goto found_it;
-	if (!s2[k])
-		return 0;
-	diff = -1;
+	if (!first_change)
+		return strcmp(s1, s2);
 
-found_it:
+	for (k = 0; s1[k] == s2[k]; k++)
+		if (s1[k] == '\0')
+			break;
+
 	*first_change = k;
-	if (diff > 0)
-		return 1;
-	else if (diff < 0)
-		return -1;
-	else
-		return 0;
+	return (unsigned char)s1[k] - (unsigned char)s2[k];
 }
 
 /*
@@ -965,7 +955,7 @@ static int has_dir_name(struct index_state *istate,
 	int stage = ce_stage(ce);
 	const char *name = ce->name;
 	const char *slash = name + ce_namelen(ce);
-	int len_eq_last;
+	size_t len_eq_last;
 	int cmp_last = 0;
 
 	if (istate->cache_nr > 0) {
