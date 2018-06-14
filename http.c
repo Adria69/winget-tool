@@ -146,6 +146,13 @@ static char *cached_accept_language;
 
 static char *http_ssl_backend;
 
+/*
+ * With the backend being set to `schannel`, setting sslCAinfo would override
+ * the Certificate Store in cURL v7.60.0 and later, which is not what we want
+ * by default.
+ */
+static int http_schannel_use_ssl_cainfo;
+
 size_t fread_buffer(char *ptr, size_t eltsize, size_t nmemb, void *buffer_)
 {
 	size_t size = eltsize * nmemb;
@@ -296,6 +303,11 @@ static int http_options(const char *var, const char *value, void *cb)
 	if (!strcmp("http.sslbackend", var)) {
 		free(http_ssl_backend);
 		http_ssl_backend = xstrdup_or_null(value);
+		return 0;
+	}
+
+	if (!strcmp("http.schannel.usesslcainfo", var)) {
+		http_schannel_use_ssl_cainfo = git_config_bool(var, value);
 		return 0;
 	}
 
@@ -782,7 +794,11 @@ static CURL *get_curl_handle(void)
 	if (ssl_pinnedkey != NULL)
 		curl_easy_setopt(result, CURLOPT_PINNEDPUBLICKEY, ssl_pinnedkey);
 #endif
-	if (ssl_cainfo != NULL)
+	if (http_ssl_backend && !strcmp("schannel", http_ssl_backend) &&
+	    !http_schannel_use_ssl_cainfo) {
+		curl_easy_setopt(result, CURLOPT_CAINFO, NULL);
+		curl_easy_setopt(result, CURLOPT_PROXY_CAINFO, NULL);
+	} else if (ssl_cainfo != NULL)
 		curl_easy_setopt(result, CURLOPT_CAINFO, ssl_cainfo);
 
 	if (curl_low_speed_limit > 0 && curl_low_speed_time > 0) {
