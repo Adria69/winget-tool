@@ -3238,7 +3238,7 @@ int uname(struct utsname *buf)
 static int validate_system_file_ownership(const char *path)
 {
 	WCHAR wpath[MAX_LONG_PATH];
-	PSID owner_sid;
+	PSID owner_sid = NULL;
 	PSECURITY_DESCRIPTOR descriptor = NULL;
 	HANDLE token;
 	TOKEN_USER* info = NULL;
@@ -3256,11 +3256,13 @@ static int validate_system_file_ownership(const char *path)
 	/* if the file does not exist, it does not have a valid owner */
 	if (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND) {
 		ret = 0;
+		owner_sid = NULL;
 		goto finish_validation;
 	}
 
 	if (err != ERROR_SUCCESS) {
 		ret = error(_("failed to validate '%s' (%ld)"), path, err);
+		owner_sid = NULL;
 		goto finish_validation;
 	}
 
@@ -3291,7 +3293,7 @@ static int validate_system_file_ownership(const char *path)
 	}
 
 finish_validation:
-	if (!ret) {
+	if (!ret && owner_sid) {
 #define MAX_NAME_OR_DOMAIN 256
 		wchar_t owner_name[MAX_NAME_OR_DOMAIN];
 		wchar_t owner_domain[MAX_NAME_OR_DOMAIN];
