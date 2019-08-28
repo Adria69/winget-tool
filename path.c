@@ -1374,7 +1374,7 @@ static int is_ntfs_dot_generic(const char *name,
 only_spaces_and_periods:
 		for (;;) {
 			char c = name[i++];
-			if (!c)
+			if (!c || c == ':')
 				return 1;
 			if (c != ' ' && c != '.')
 				return 0;
