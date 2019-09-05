@@ -515,8 +515,11 @@ int handle_long_path(wchar_t *path, int len, int max_path, int expand);
 /*
  * Verifies that the given path is a valid one on Windows.
  *
- * In particular, path segments are disallowed which end in a period or a
- * space (except the special directories `.` and `..`).
+ * In particular, path segments are disallowed which
+ *
+ * - end in a period or a space (except the special directories `.` and `..`).
+ *
+ * - contain any of the reserved characters, e.g. `:`, `;`, `*`, etc
  *
  * Returns 1 upon success, otherwise 0.
  */
