@@ -512,6 +512,17 @@ extern const char *program_data_config(void);
  */
 int handle_long_path(wchar_t *path, int len, int max_path, int expand);
 
+/*
+ * Verifies that the given path is a valid one on Windows.
+ *
+ * In particular, path segments are disallowed which end in a period or a
+ * space (except the special directories `.` and `..`).
+ *
+ * Returns 1 upon success, otherwise 0.
+ */
+int is_valid_win32_path(const char *path);
+#define is_valid_path(path) is_valid_win32_path(path)
+
 /**
  * Converts UTF-8 encoded string to UTF-16LE.
  *
