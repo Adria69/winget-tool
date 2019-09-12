@@ -735,7 +735,7 @@ static int checkout(int submodule_progress)
 
 	if (!err && option_recursive) {
 		struct argv_array args = ARGV_ARRAY_INIT;
-		argv_array_pushl(&args, "submodule", "update", "--init", "--recursive", NULL);
+		argv_array_pushl(&args, "submodule", "update", "--require-init", "--recursive", NULL);
 
 		if (option_shallow_submodules == 1)
 			argv_array_push(&args, "--depth=1");
