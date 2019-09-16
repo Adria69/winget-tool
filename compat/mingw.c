@@ -498,6 +498,12 @@ int mingw_mkdir(const char *path, int mode)
 {
 	int ret;
 	wchar_t wpath[MAX_LONG_PATH];
+
+	if (!is_valid_win32_path(path)) {
+		errno = EINVAL;
+		return -1;
+	}
+
 	/* CreateDirectoryW path limit is 248 (MAX_PATH - 8.3 file name) */
 	if (xutftowcs_path_ex(wpath, path, MAX_LONG_PATH, -1, 248,
 			core_long_paths) < 0)
@@ -515,12 +521,17 @@ int mingw_open (const char *filename, int oflags, ...)
 {
 	va_list args;
 	unsigned mode;
-	int fd;
+	int fd, create = (oflags & (O_CREAT | O_EXCL)) == (O_CREAT | O_EXCL);
 	wchar_t wfilename[MAX_LONG_PATH];
 
 	va_start(args, oflags);
 	mode = va_arg(args, int);
 	va_end(args);
+
+	if (!is_valid_win32_path(filename)) {
+		errno = create ? EINVAL : ENOENT;
+		return -1;
+	}
 
 	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
@@ -583,6 +594,11 @@ FILE *mingw_fopen (const char *filename, const char *otype)
 	int hide = needs_hiding(filename);
 	FILE *file;
 	wchar_t wfilename[MAX_LONG_PATH], wotype[4];
+	if (!is_valid_win32_path(filename)) {
+		int create = otype && strchr(otype, 'w');
+		errno = create ? EINVAL : ENOENT;
+		return NULL;
+	}
 	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
 	if (xutftowcs_long_path(wfilename, filename) < 0 ||
@@ -603,6 +619,11 @@ FILE *mingw_freopen (const char *filename, const char *otype, FILE *stream)
 	int hide = needs_hiding(filename);
 	FILE *file;
 	wchar_t wfilename[MAX_LONG_PATH], wotype[4];
+	if (!is_valid_win32_path(filename)) {
+		int create = otype && strchr(otype, 'w');
+		errno = create ? EINVAL : ENOENT;
+		return NULL;
+	}
 	if (filename && !strcmp(filename, "/dev/null"))
 		filename = "nul";
 	if (xutftowcs_long_path(wfilename, filename) < 0 ||
@@ -2978,6 +2999,40 @@ int handle_long_path(wchar_t *path, int len, int max_path, int expand)
 		wcscpy(path, L"\\\\?\\");
 		wcscpy(path + 4, buf);
 		return result + 4;
+	}
+}
+
+int is_valid_win32_path(const char *path)
+{
+	int preceding_space_or_period = 0, i = 0, periods = 0;
+
+	if (!protect_ntfs)
+		return 1;
+
+	for (;;) {
+		char c = *(path++);
+		switch (c) {
+		case '\0':
+		case '/': case '\\':
+			/* cannot end in ` ` or `.`, except for `.` and `..` */
+			if (preceding_space_or_period &&
+			    (i != periods || periods > 2))
+				return 0;
+			if (!c)
+				return 1;
+
+			i = periods = preceding_space_or_period = 0;
+			continue;
+		case '.':
+			periods++;
+			/* fallthru */
+		case ' ':
+			preceding_space_or_period = 1;
+			i++;
+			continue;
+		}
+		preceding_space_or_period = 0;
+		i++;
 	}
 }
 
