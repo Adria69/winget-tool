@@ -570,7 +570,7 @@ static int fsck_tree(struct tree *item, struct fsck_options *options)
 
 	while (desc.size) {
 		unsigned short mode;
-		const char *name;
+		const char *name, *backslash;
 		const struct object_id *oid;
 
 		oid = tree_entry_extract(&desc, &name, &mode);
@@ -590,6 +590,22 @@ static int fsck_tree(struct tree *item, struct fsck_options *options)
 				retval += report(options, &item->object,
 						 FSCK_MSG_GITMODULES_SYMLINK,
 						 ".gitmodules is a symbolic link");
+		}
+
+		if ((backslash = strchr(name, '\\'))) {
+			while (backslash) {
+				backslash++;
+				has_dotgit |= is_ntfs_dotgit(backslash);
+				if (is_ntfs_dotgitmodules(backslash)) {
+					if (!S_ISLNK(mode))
+						oidset_insert(&gitmodules_found, oid);
+					else
+						retval += report(options, &item->object,
+								 FSCK_MSG_GITMODULES_SYMLINK,
+								 ".gitmodules is a symbolic link");
+				}
+				backslash = strchr(backslash, '\\');
+			}
 		}
 
 		if (update_tree_entry_gently(&desc)) {
