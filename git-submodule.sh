@@ -37,6 +37,7 @@ reference=
 cached=
 recursive=
 init=
+require_init=
 files=
 remote=
 nofetch=
@@ -510,6 +511,10 @@ cmd_update()
 		-i|--init)
 			init=1
 			;;
+		--require-init)
+			init=1
+			require_init=1
+			;;
 		--remote)
 			remote=1
 			;;
@@ -588,6 +593,7 @@ cmd_update()
 		${update:+--update "$update"} \
 		${reference:+"$reference"} \
 		${depth:+--depth "$depth"} \
+		${require_init:+--require-init} \
 		${recommend_shallow:+"$recommend_shallow"} \
 		${jobs:+$jobs} \
 		"$@" || echo "#unmatched" $?
