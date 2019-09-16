@@ -482,8 +482,8 @@ HANDLE winansi_get_osfhandle(int fd);
  * git specific compatibility
  */
 
-#define has_dos_drive_prefix(path) \
-	(isalpha(*(path)) && (path)[1] == ':' ? 2 : 0)
+int mingw_has_dos_drive_prefix(const char *path);
+#define has_dos_drive_prefix mingw_has_dos_drive_prefix
 int mingw_skip_dos_drive_prefix(char **path);
 #define skip_dos_drive_prefix mingw_skip_dos_drive_prefix
 #define has_unc_prefix(path) (*(path) == '\\' && (path)[1] == '\\' ? 2 : 0)
@@ -556,8 +556,11 @@ int handle_long_path(wchar_t *path, int len, int max_path, int expand);
 /*
  * Verifies that the given path is a valid one on Windows.
  *
- * In particular, path segments are disallowed which end in a period or a
- * space (except the special directories `.` and `..`).
+ * In particular, path segments are disallowed which
+ *
+ * - end in a period or a space (except the special directories `.` and `..`).
+ *
+ * - contain any of the reserved characters, e.g. `:`, `;`, `*`, etc
  *
  * Returns 1 upon success, otherwise 0.
  */
