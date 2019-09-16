@@ -1273,7 +1273,7 @@ static const char *quote_arg_msvc(const char *arg)
 				p++;
 				len++;
 			}
-			if (*p == '"')
+			if (*p == '"' || !*p)
 				n += count*2 + 1;
 			continue;
 		}
@@ -1295,16 +1295,19 @@ static const char *quote_arg_msvc(const char *arg)
 				count++;
 				*d++ = *arg++;
 			}
-			if (*arg == '"') {
+			if (*arg == '"' || !*arg) {
 				while (count-- > 0)
 					*d++ = '\\';
+				/* don't escape the surrounding end quote */
+				if (!*arg)
+					break;
 				*d++ = '\\';
 			}
 		}
 		*d++ = *arg++;
 	}
 	*d++ = '"';
-	*d++ = 0;
+	*d++ = '\0';
 	return q;
 }
 
@@ -1317,13 +1320,14 @@ static const char *quote_arg_msys2(const char *arg)
 
 	for (p = arg; *p; p++) {
 		int ws = isspace(*p);
-		if (!ws && *p != '\\' && *p != '"' && *p != '{')
+		if (!ws && *p != '\\' && *p != '"' && *p != '{' && *p != '\'' &&
+		    *p != '?' && *p != '*' && *p != '~')
 			continue;
 		if (!buf.len)
 			strbuf_addch(&buf, '"');
 		if (p != p2)
 			strbuf_add(&buf, p2, p - p2);
-		if (!ws && *p != '{')
+		if (*p == '\\' || *p == '"')
 			strbuf_addch(&buf, '\\');
 		p2 = p;
 	}
@@ -1333,7 +1337,7 @@ static const char *quote_arg_msys2(const char *arg)
 	else if (!buf.len)
 		return arg;
 	else
-		strbuf_add(&buf, p2, p - p2),
+		strbuf_add(&buf, p2, p - p2);
 
 	strbuf_addch(&buf, '"');
 	return strbuf_detach(&buf, 0);
@@ -1657,7 +1661,10 @@ static inline int match_last_path_component(const char *path, size_t *len,
 
 static int is_msys2_sh(const char *cmd)
 {
-	if (cmd && !strcmp(cmd, "sh")) {
+	if (!cmd)
+		return 0;
+
+	if (!strcmp(cmd, "sh")) {
 		static int ret = -1;
 		char *p;
 
@@ -1677,6 +1684,16 @@ static int is_msys2_sh(const char *cmd)
 		}
 		return ret;
 	}
+
+	if (ends_with(cmd, "\\sh.exe")) {
+		static char *sh;
+
+		if (!sh)
+			sh = path_lookup("sh", 0);
+
+		return !fspathcmp(cmd, sh);
+	}
+
 	return 0;
 }
 
@@ -1697,7 +1714,8 @@ static pid_t mingw_spawnve_fd(const char *cmd, const char **argv, char **deltaen
 	BOOL ret;
 	HANDLE cons;
 	const char *(*quote_arg)(const char *arg) =
-		is_msys2_sh(*argv) ? quote_arg_msys2 : quote_arg_msvc;
+		is_msys2_sh(cmd ? cmd : *argv) ?
+		quote_arg_msys2 : quote_arg_msvc;
 	const char *strace_env;
 
 	if (restrict_handle_inheritance < 0)
