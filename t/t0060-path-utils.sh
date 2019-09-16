@@ -421,6 +421,9 @@ test_expect_success 'match .gitmodules' '
 		~1000000 \
 		~9999999 \
 		\
+		.gitmodules:\$DATA \
+		"gitmod~4 . :\$DATA" \
+		\
 		--not \
 		".gitmodules x"  \
 		".gitmodules .x" \
@@ -445,7 +448,9 @@ test_expect_success 'match .gitmodules' '
 		\
 		GI7EB~1 \
 		GI7EB~01 \
-		GI7EB~1X
+		GI7EB~1X \
+		\
+		.gitmodules,:\$DATA
 '
 
 test_done
