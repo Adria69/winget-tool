@@ -1652,7 +1652,8 @@ static pid_t mingw_spawnve_fd(const char *cmd, const char **argv, char **deltaen
 	HANDLE cons;
 	const char *strace_env;
 	const char *(*quote_arg)(const char *arg) =
-		is_msys2_sh(*argv) ? quote_arg_msys2 : quote_arg_msvc;
+		is_msys2_sh(cmd ? cmd : *argv) ?
+		quote_arg_msys2 : quote_arg_msvc;
 
 	if (!atexit_handler_initialized) {
 		atexit_handler_initialized = 1;
