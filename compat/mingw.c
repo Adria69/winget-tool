@@ -13,6 +13,7 @@
 #include "../config.h"
 #include "../attr.h"
 #include "../string-list.h"
+#include "dir.h"
 
 #define HCAST(type, handle) ((type)(intptr_t)handle)
 
@@ -1634,7 +1635,10 @@ CRITICAL_SECTION pinfo_cs;
 
 static int is_msys2_sh(const char *cmd)
 {
-	if (cmd && !strcmp(cmd, "sh")) {
+	if (!cmd)
+		return 0;
+
+	if (!strcmp(cmd, "sh")) {
 		static int ret = -1;
 		char *p;
 
@@ -1657,6 +1661,16 @@ static int is_msys2_sh(const char *cmd)
 		}
 		return ret;
 	}
+
+	if (ends_with(cmd, "\\sh.exe")) {
+		static char *sh;
+
+		if (!sh)
+			sh = path_lookup("sh", 0);
+
+		return !fspathcmp(cmd, sh);
+	}
+
 	return 0;
 }
 
