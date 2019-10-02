@@ -1222,6 +1222,47 @@ int merge_submodule(unsigned char result[20], const char *path,
 	return 0;
 }
 
+int validate_submodule_git_dir(char *git_dir, const char *submodule_name)
+{
+	size_t len = strlen(git_dir), suffix_len = strlen(submodule_name);
+	char *p;
+	int ret = 0;
+
+	if (len <= suffix_len || (p = git_dir + len - suffix_len)[-1] != '/' ||
+	    strcmp(p, submodule_name))
+		die("BUG: submodule name '%s' not a suffix of git dir '%s'",
+		    submodule_name, git_dir);
+
+	/*
+	 * We prevent the contents of sibling submodules' git directories to
+	 * clash.
+	 *
+	 * Example: having a submodule named `hippo` and another one named
+	 * `hippo/hooks` would result in the git directories
+	 * `.git/modules/hippo/` and `.git/modules/hippo/hooks/`, respectively,
+	 * but the latter directory is already designated to contain the hooks
+	 * of the former.
+	 */
+	for (; *p; p++) {
+		if (is_dir_sep(*p)) {
+			char c = *p;
+
+			*p = '\0';
+			if (is_git_directory(git_dir))
+				ret = -1;
+			*p = c;
+
+			if (ret < 0)
+				return error(_("submodule git dir '%s' is "
+					       "inside git dir '%.*s'"),
+					     git_dir,
+					     (int)(p - git_dir), git_dir);
+		}
+	}
+
+	return 0;
+}
+
 /* Update gitfile and core.worktree setting to connect work tree and git dir */
 void connect_work_tree_and_git_dir(const char *work_tree, const char *git_dir)
 {
