@@ -1285,11 +1285,6 @@ static int do_git_config_sequence(config_fn_t fn, void *data)
 
 	current_parsing_scope = CONFIG_SCOPE_SYSTEM;
 	if (git_config_system()) {
-		if (git_program_data_config() &&
-		    !access_or_die(git_program_data_config(), R_OK, 0))
-			ret += git_config_from_file(fn,
-						    git_program_data_config(),
-						    data);
 		if (!access_or_die(git_etc_gitconfig(), R_OK, 0))
 			ret += git_config_from_file(fn, git_etc_gitconfig(),
 						    data);
