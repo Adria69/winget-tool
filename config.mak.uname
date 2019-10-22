@@ -584,6 +584,7 @@ ifeq ($(uname_S),NONSTOP_KERNEL)
 	#SHELL_PATH = /usr/coreutils/bin/bash
 endif
 ifneq (,$(findstring MINGW,$(uname_S)))
+	COMPAT_CFLAGS += -D_WIN32_WINNT=0x0502
 	pathsep = ;
 	HAVE_ALLOCA_H = YesPlease
 	NO_PREAD = YesPlease
