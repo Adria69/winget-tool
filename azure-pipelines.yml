@@ -124,7 +124,7 @@ jobs:
   - bash: |
        brew link --force gettext &&
        make -j15 DEVELOPER=1 &&
-       GIT_TEST_OPTS="--verbose-log" GIT_PROVE_OPTS="--timer --jobs 10" make -C t DEFAULT_TEST_TARGET=prove
+       GIT_SKIP_TESTS="t0050.[89]" GIT_TEST_OPTS="--verbose-log" GIT_PROVE_OPTS="--timer --jobs 10" make -C t DEFAULT_TEST_TARGET=prove
        test 0 != $? || exit 0
        cd t/test-results
        for t in $(grep -l '^[1-9]' *.exit | sed -n 's/\.exit$//p')
