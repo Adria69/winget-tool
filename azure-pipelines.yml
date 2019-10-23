@@ -1,0 +1,138 @@
+variables:
+  Agent.Source.Git.ShallowFetchDepth: 1
+
+jobs:
+- job: windows_build
+  displayName: Windows Build
+  condition: succeeded()
+  pool: Hosted
+  timeoutInMinutes: 240
+  steps:
+  - powershell: |
+      $urlbase = "https://dev.azure.com/git-for-windows/git/_apis/build/builds"
+      $id = ((Invoke-WebRequest -UseBasicParsing "${urlbase}?definitions=22&statusFilter=completed&resultFilter=succeeded&`$top=1").content | ConvertFrom-JSON).value[0].id
+      $downloadUrl = ((Invoke-WebRequest -UseBasicParsing "${urlbase}/$id/artifacts").content | ConvertFrom-JSON).value[1].resource.downloadUrl
+      (New-Object Net.WebClient).DownloadFile($downloadUrl,"git-sdk-64-minimal.zip")
+      Expand-Archive git-sdk-64-minimal.zip -DestinationPath . -Force
+      Remove-Item git-sdk-64-minimal.zip
+
+      # Let Git ignore the SDK and the test-cache
+      "/git-sdk-64-minimal/`n/test-cache/`n" | Out-File -NoNewLine -Encoding ascii -Append "$(Build.SourcesDirectory)\.git\info\exclude"
+    displayName: 'Download git-sdk-64-minimal'
+  - powershell: |
+      & git-sdk-64-minimal\usr\bin\bash.exe -lc @"
+        printf '%s\n%s\n\t%s\n\t%s\n\t%s\n' \
+        'include Makefile' \
+        'artifacts/artifacts.tar.gz: `$(ALL_PROGRAMS) `$(SCRIPT_LIB) `$(BUILT_INS) `$(OTHER_PROGRAMS)  GIT-BUILD-OPTIONS `$(TEST_PROGRAMS) `$(test_bindir_programs) `$(NO_INSTALL) `$(MOFILES)' \
+        '`$(MAKE) -C templates' \
+        'mkdir -p artifacts' \
+        'tar czf "`$@" `$^ templates/blt/' >artifacts.mak &&
+        make -f artifacts.mak -j10 DEVELOPER=1 USE_LIBPCRE= artifacts/artifacts.tar.gz
+      "@
+      if (!$?) { exit(1) }
+    displayName: Build
+    env:
+      HOME: $(Build.SourcesDirectory)
+      MSYSTEM: MINGW64
+      DEVELOPER: 1
+      NO_PERL: 1
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: test artifacts'
+    inputs:
+      artifactName: 'windows-artifacts'
+      targetPath: '$(Build.SourcesDirectory)\artifacts'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: git-sdk-64-minimal'
+    inputs:
+      artifactName: 'git-sdk-64-minimal'
+      targetPath: '$(Build.SourcesDirectory)\git-sdk-64-minimal'
+
+- job: windows_test
+  displayName: Windows Test
+  dependsOn: windows_build
+  condition: succeeded()
+  pool: Hosted
+  timeoutInMinutes: 240
+  strategy:
+    parallel: 10
+  steps:
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact: test artifacts'
+    inputs:
+      artifactName: 'windows-artifacts'
+      targetPath: '$(Build.SourcesDirectory)'
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact: git-sdk-64-minimal'
+    inputs:
+      artifactName: 'git-sdk-64-minimal'
+      targetPath: '$(Build.SourcesDirectory)\git-sdk-64-minimal'
+  - powershell: |
+      & git-sdk-64-minimal\usr\bin\bash.exe -lc @"
+        test -f artifacts.tar.gz || {
+          echo No test artifacts found\; skipping >&2
+          exit 0
+        }
+        tar xf artifacts.tar.gz || exit 1
+
+        # Let Git ignore the SDK and the test-cache
+        printf '%s\n' /git-sdk-64-minimal/ /test-cache/ >>.git/info/exclude
+
+        cd t &&
+        T=`$(ls -S t[0-9]`*.sh | awk NR%`$SYSTEM_TOTALJOBSINPHASE==`$((`$SYSTEM_JOBPOSITIONINPHASE-1))) &&
+        GIT_TEST_OPTS=\"--verbose-log\" GIT_PROVE_OPTS=\"--timer --jobs 10\" eval make -j10 `$T
+        test 0 != `$? || exit 0
+        cd test-results
+        for t in `$(grep -l '^[1-9]' *.exit | sed -n 's/\.exit`$//p')
+        do
+          echo \"##vso[task.logissue type=error]Failed: `$t\"
+          cat `$t.out
+        done
+        exit 1
+      "@
+      if (!$?) { exit(1) }
+    displayName: 'Test (parallel)'
+    env:
+      HOME: $(Build.SourcesDirectory)
+      MSYSTEM: MINGW64
+      NO_SVN_TESTS: 1
+      GIT_TEST_SKIP_REBASE_P: 1
+
+- job: linux_gcc
+  displayName: linux-gcc
+  condition: succeeded()
+  pool: Hosted Ubuntu 1604
+  steps:
+  - bash: |
+       sudo apt-get -y install git gcc make libssl-dev libcurl4-openssl-dev libexpat-dev tcl tk gettext git-email zlib1g-dev apache2 language-pack-is git-svn || exit 1
+
+       make -j15 DEVELOPER=1 &&
+       GIT_SKIP_TESTS="t9128.3 t9167.3" GIT_TEST_OPTS="--verbose-log" GIT_PROVE_OPTS="--timer --jobs 10" make -C t DEFAULT_TEST_TARGET=prove
+       test 0 != $? || exit 0
+       cd t/test-results
+       for t in $(grep -l '^[1-9]' *.exit | sed -n 's/\.exit$//p')
+       do
+         echo "##vso[task.logissue type=error]Failed: $t"
+         cat $t.out
+       done
+       exit 1
+
+- job: osx_gcc
+  displayName: osx-gcc
+  condition: succeeded()
+  pool: Hosted macOS
+  steps:
+  - bash: |
+       brew link --force gettext &&
+       make -j15 DEVELOPER=1 &&
+       GIT_SKIP_TESTS="t0050.[89]" GIT_TEST_OPTS="--verbose-log" GIT_PROVE_OPTS="--timer --jobs 10" make -C t DEFAULT_TEST_TARGET=prove
+       test 0 != $? || exit 0
+       cd t/test-results
+       for t in $(grep -l '^[1-9]' *.exit | sed -n 's/\.exit$//p')
+       do
+         echo "##vso[task.logissue type=error]Failed: $t"
+         cat $t.out
+       done
+       exit 1
+    displayName: 'ci/run-build-and-tests.sh'
+    env:
+      GITFILESHAREPWD: $(gitfileshare.pwd)

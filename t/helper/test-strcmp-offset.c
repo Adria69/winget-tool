@@ -27,7 +27,7 @@ int try_pair(const char *sa, const char *sb, int first_change)
 
 	r_exp = strcmp(sa, sb);
 	r_tst = strcmp_offset(sa, sb, &offset);
-	if (r_tst != r_exp) {
+	if (r_tst != r_exp && r_tst * r_exp <= 0) {
 		error("FAIL: '%s' vs '%s', result expect %d, observed %d\n",
 			  sa, sb, r_exp, r_tst);
 		failed = 1;

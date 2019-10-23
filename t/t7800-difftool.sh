@@ -31,7 +31,8 @@ test_expect_success 'verify we are running the correct difftool' '
 	then
 		test_must_fail ok=129 git difftool -h >help &&
 		grep "g, --gui" help
-	else
+	elif test_have_prereq PERL
+	then
 		git difftool -h >help &&
 		grep "g|--gui" help
 	fi
