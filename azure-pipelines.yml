@@ -1,13 +1,114 @@
-resources:
-- repo: self
-  fetchDepth: 1
+variables:
+  Agent.Source.Git.ShallowFetchDepth: 1
 
-phases:
-- phase: linux_clang
+jobs:
+- job: windows_build
+  displayName: Windows Build
+  condition: succeeded()
+  pool: Hosted
+  timeoutInMinutes: 240
+  steps:
+  - powershell: |
+      $urlbase = "https://dev.azure.com/git-for-windows/git/_apis/build/builds"
+      $id = ((Invoke-WebRequest -UseBasicParsing "${urlbase}?definitions=22&statusFilter=completed&resultFilter=succeeded&`$top=1").content | ConvertFrom-JSON).value[0].id
+      $downloadUrl = ((Invoke-WebRequest -UseBasicParsing "${urlbase}/$id/artifacts").content | ConvertFrom-JSON).value[1].resource.downloadUrl
+      (New-Object Net.WebClient).DownloadFile($downloadUrl,"git-sdk-64-minimal.zip")
+      Expand-Archive git-sdk-64-minimal.zip -DestinationPath . -Force
+      Remove-Item git-sdk-64-minimal.zip
+
+      # Let Git ignore the SDK and the test-cache
+      "/git-sdk-64-minimal/`n/test-cache/`n" | Out-File -NoNewLine -Encoding ascii -Append "$(Build.SourcesDirectory)\.git\info\exclude"
+    displayName: 'Download git-sdk-64-minimal'
+  - powershell: |
+      & git-sdk-64-minimal\usr\bin\bash.exe -lc @"
+        printf '%s\n%s\n\t%s\n\t%s\n\t%s\n' \
+        'include Makefile' \
+        'artifacts/artifacts.tar.gz: `$(ALL_PROGRAMS) `$(SCRIPT_LIB) `$(BUILT_INS) `$(OTHER_PROGRAMS)  GIT-BUILD-OPTIONS `$(TEST_PROGRAMS) `$(test_bindir_programs) `$(NO_INSTALL) `$(MOFILES)' \
+        '`$(MAKE) -C templates' \
+        'mkdir -p artifacts' \
+        'tar czf "`$@" `$^ templates/blt/' >artifacts.mak &&
+        make -f artifacts.mak -j10 DEVELOPER=1 USE_LIBPCRE1= USE_LIBPCRE2=1 artifacts/artifacts.tar.gz
+      "@
+      if (!$?) { exit(1) }
+    displayName: Build
+    env:
+      HOME: $(Build.SourcesDirectory)
+      MSYSTEM: MINGW64
+      DEVELOPER: 1
+      NO_PERL: 1
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: test artifacts'
+    inputs:
+      artifactName: 'windows-artifacts'
+      targetPath: '$(Build.SourcesDirectory)\artifacts'
+  - task: PublishPipelineArtifact@0
+    displayName: 'Publish Pipeline Artifact: git-sdk-64-minimal'
+    inputs:
+      artifactName: 'git-sdk-64-minimal'
+      targetPath: '$(Build.SourcesDirectory)\git-sdk-64-minimal'
+
+- job: windows_test
+  displayName: Windows Test
+  dependsOn: windows_build
+  condition: succeeded()
+  pool: Hosted
+  timeoutInMinutes: 240
+  strategy:
+    parallel: 10
+  steps:
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact: test artifacts'
+    inputs:
+      artifactName: 'windows-artifacts'
+      targetPath: '$(Build.SourcesDirectory)'
+  - task: DownloadPipelineArtifact@0
+    displayName: 'Download Pipeline Artifact: git-sdk-64-minimal'
+    inputs:
+      artifactName: 'git-sdk-64-minimal'
+      targetPath: '$(Build.SourcesDirectory)\git-sdk-64-minimal'
+  - powershell: |
+      & git-sdk-64-minimal\usr\bin\bash.exe -lc @"
+        test -f artifacts.tar.gz || {
+          echo No test artifacts found\; skipping >&2
+          exit 0
+        }
+        tar xf artifacts.tar.gz || exit 1
+
+        # Let Git ignore the SDK and the test-cache
+        printf '%s\n' /git-sdk-64-minimal/ /test-cache/ >>.git/info/exclude
+
+        cd t &&
+        T=`$(ls -S t[0-9]`*.sh | awk NR%`$SYSTEM_TOTALJOBSINPHASE==`$((`$SYSTEM_JOBPOSITIONINPHASE-1))) &&
+        GIT_TEST_OPTS=\"--verbose-log -x --quiet --write-junit-xml\" GIT_PROVE_OPTS=\"--timer --jobs 10\" eval make -j10 `$T
+        test 0 != `$? || exit 0
+        cd test-results
+        for t in `$(grep -l '^[1-9]' *.exit | sed -n 's/\.exit`$//p')
+        do
+          echo \"##vso[task.logissue type=error]Failed: `$t\"
+          cat `$t.out
+        done
+        exit 1
+      "@
+      if (!$?) { exit(1) }
+    displayName: 'Test (parallel)'
+    env:
+      HOME: $(Build.SourcesDirectory)
+      MSYSTEM: MINGW64
+      NO_SVN_TESTS: 1
+      GIT_TEST_SKIP_REBASE_P: 1
+  - task: PublishTestResults@2
+    displayName: 'Publish Test Results **/TEST-*.xml'
+    inputs:
+      mergeTestResults: true
+      testRunTitle: 'windows'
+      platform: Windows
+      publishRunAttachments: false
+    condition: succeededOrFailed()
+
+- job: linux_clang
   displayName: linux-clang
   condition: succeeded()
-  queue:
-    name: Hosted Ubuntu 1604
+  pool: Hosted Ubuntu 1604
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
@@ -37,11 +138,10 @@ phases:
       publishRunAttachments: false
     condition: succeededOrFailed()
 
-- phase: linux_gcc
+- job: linux_gcc
   displayName: linux-gcc
   condition: succeeded()
-  queue:
-    name: Hosted Ubuntu 1604
+  pool: Hosted Ubuntu 1604
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
@@ -69,11 +169,10 @@ phases:
       publishRunAttachments: false
     condition: succeededOrFailed()
 
-- phase: osx_clang
+- job: osx_clang
   displayName: osx-clang
   condition: succeeded()
-  queue:
-    name: Hosted macOS
+  pool: Hosted macOS
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
@@ -99,11 +198,10 @@ phases:
       publishRunAttachments: false
     condition: succeededOrFailed()
 
-- phase: osx_gcc
+- job: osx_gcc
   displayName: osx-gcc
   condition: succeeded()
-  queue:
-    name: Hosted macOS
+  pool: Hosted macOS
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
@@ -127,11 +225,10 @@ phases:
       publishRunAttachments: false
     condition: succeededOrFailed()
 
-- phase: gettext_poison
+- job: gettext_poison
   displayName: GETTEXT_POISON
   condition: succeeded()
-  queue:
-    name: Hosted Ubuntu 1604
+  pool: Hosted Ubuntu 1604
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
@@ -160,89 +257,10 @@ phases:
       publishRunAttachments: false
     condition: succeededOrFailed()
 
-- phase: windows
-  displayName: Windows
-  condition: succeeded()
-  queue:
-    name: Hosted
-    timeoutInMinutes: 240
-  steps:
-  - powershell: |
-       # Helper to check the error level of the latest command (exit with error when appropriate)
-       function c() { if (!$?) { exit(1) } }
-
-       if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
-         net use s: \\gitfileshare.file.core.windows.net\test-cache "$GITFILESHAREPWD" /user:AZURE\gitfileshare /persistent:no; c
-         cmd /c mklink /d "$(Build.SourcesDirectory)\test-cache" S:\; c
-       }
-
-       # Add build agent's MinGit to PATH
-       $env:PATH = $env:AGENT_HOMEDIRECTORY +"\externals\\git\cmd;" +$env:PATH
-
-       # Helper to initialize (or update) a Git worktree
-       function init ($path, $url, $set_origin) {
-           if (Test-Path $path) {
-               cd $path; c
-               if (Test-Path .git) {
-                   git init; c
-               } else {
-                   git status
-               }
-           } else {
-               git init $path; c
-               cd $path; c
-           }
-           git config core.autocrlf false; c
-           git config core.untrackedCache true; c
-           if (($set_origin -ne 0) -and !(git config remote.origin.url)) {
-               git remote add origin $url; c
-           }
-           git fetch --depth=1 $url master; c
-           git reset --hard FETCH_HEAD; c
-           git clean -df; c
-       }
-
-       # Initialize Git for Windows' SDK
-       $sdk_path = "$(Build.SourcesDirectory)\git-sdk-64"
-       init "$sdk_path" "https://dev.azure.com/git-for-windows/git-sdk-64/_git/git-sdk-64" 0
-       init usr\src\build-extra https://github.com/git-for-windows/build-extra 1
-
-       cd "$(Build.SourcesDirectory)"; c
-
-       $env:HOME = "$(Build.SourcesDirectory)"
-       $env:MSYSTEM = "MINGW64"
-       git-sdk-64\git-cmd --command=usr\\bin\\bash.exe -lc @"
-         . ci/lib.sh
-
-         make -j10 DEVELOPER=1 NO_PERL=1 || exit 1
-         NO_PERL=1 NO_SVN_TESTS=1 GIT_TEST_OPTS=\"--no-chain-lint --no-bin-wrappers --quiet --write-junit-xml\" time make -j15 -k DEVELOPER=1 test || {
-           NO_PERL=1 NO_SVN_TESTS=1 GIT_TEST_OPTS=\"-i -v -x\" make -k -C t failed; exit 1
-         }
-
-         save_good_tree
-       "@
-       c
-
-       if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
-         cmd /c rmdir "$(Build.SourcesDirectory)\test-cache"
-       }
-    displayName: 'build & test'
-    env:
-      GITFILESHAREPWD: $(gitfileshare.pwd)
-  - task: PublishTestResults@2
-    displayName: 'Publish Test Results **/TEST-*.xml'
-    inputs:
-      mergeTestResults: true
-      testRunTitle: 'windows'
-      platform: Windows
-      publishRunAttachments: false
-    condition: succeededOrFailed()
-
-- phase: linux32
+- job: linux32
   displayName: Linux32
   condition: succeeded()
-  queue:
-    name: Hosted Ubuntu 1604
+  pool: Hosted Ubuntu 1604
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
@@ -279,11 +297,10 @@ phases:
       publishRunAttachments: false
     condition: succeededOrFailed()
 
-- phase: static_analysis
+- job: static_analysis
   displayName: StaticAnalysis
   condition: succeeded()
-  queue:
-    name: Hosted Ubuntu 1604
+  pool: Hosted Ubuntu 1604
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
@@ -301,11 +318,10 @@ phases:
     env:
       GITFILESHAREPWD: $(gitfileshare.pwd)
 
-- phase: documentation
+- job: documentation
   displayName: Documentation
   condition: succeeded()
-  queue:
-    name: Hosted Ubuntu 1604
+  pool: Hosted Ubuntu 1604
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
