@@ -181,7 +181,7 @@ osx-clang|osx-gcc)
 	# t9810 occasionally fails on Travis CI OS X
 	# t9816 occasionally fails with "TAP out of sequence errors" on
 	# Travis CI OS X
-	export GIT_SKIP_TESTS="t9810 t9816"
+	export GIT_SKIP_TESTS="t9810 t9816 t9822"
 	;;
 GIT_TEST_GETTEXT_POISON)
 	export GIT_TEST_GETTEXT_POISON=YesPlease
