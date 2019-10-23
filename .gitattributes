@@ -2,3 +2,5 @@
 *.[ch] whitespace=indent,trail,space diff=cpp eol=lf
 *.sh whitespace=indent,trail,space eol=lf
 *.{perl,pm,txt} eol=lf
+/GIT-VERSION-GEN eol=lf
+/mergetools/* eol=lf
