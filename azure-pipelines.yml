@@ -106,7 +106,7 @@ jobs:
        sudo apt-get -y install git gcc make libssl-dev libcurl4-openssl-dev libexpat-dev tcl tk gettext git-email zlib1g-dev apache2 language-pack-is git-svn || exit 1
 
        make -j15 DEVELOPER=1 &&
-       GIT_TEST_OPTS="--verbose-log" GIT_PROVE_OPTS="--timer --jobs 10" make -C t DEFAULT_TEST_TARGET=prove
+       GIT_SKIP_TESTS="t9128.3 t9167.3" GIT_TEST_OPTS="--verbose-log" GIT_PROVE_OPTS="--timer --jobs 10" make -C t DEFAULT_TEST_TARGET=prove
        test 0 != $? || exit 0
        cd t/test-results
        for t in $(grep -l '^[1-9]' *.exit | sed -n 's/\.exit$//p')
