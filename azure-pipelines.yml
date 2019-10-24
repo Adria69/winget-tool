@@ -3,6 +3,84 @@ resources:
   fetchDepth: 1
 
 phases:
+- phase: windows
+  displayName: Windows
+  condition: succeeded()
+  queue:
+    name: Hosted
+    timeoutInMinutes: 240
+  steps:
+  - powershell: |
+       # Helper to check the error level of the latest command (exit with error when appropriate)
+       function c() { if (!$?) { exit(1) } }
+
+       if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
+         net use s: \\gitfileshare.file.core.windows.net\test-cache "$GITFILESHAREPWD" /user:AZURE\gitfileshare /persistent:no; c
+         cmd /c mklink /d "$(Build.SourcesDirectory)\test-cache" S:\; c
+       }
+
+       # Add build agent's MinGit to PATH
+       $env:PATH = $env:AGENT_HOMEDIRECTORY +"\externals\\git\cmd;" +$env:PATH
+
+       # Helper to initialize (or update) a Git worktree
+       function init ($path, $url, $set_origin) {
+           if (Test-Path $path) {
+               cd $path; c
+               if (Test-Path .git) {
+                   git init; c
+               } else {
+                   git status
+               }
+           } else {
+               git init $path; c
+               cd $path; c
+           }
+           git config core.autocrlf false; c
+           git config core.untrackedCache true; c
+           if (($set_origin -ne 0) -and !(git config remote.origin.url)) {
+               git remote add origin $url; c
+           }
+           git fetch --depth=1 $url master; c
+           git reset --hard FETCH_HEAD; c
+           git clean -df; c
+       }
+
+       # Initialize Git for Windows' SDK
+       $sdk_path = "$(Build.SourcesDirectory)\git-sdk-64"
+       init "$sdk_path" "https://dev.azure.com/git-for-windows/git-sdk-64/_git/git-sdk-64" 0
+       init usr\src\build-extra https://github.com/git-for-windows/build-extra 1
+
+       cd "$(Build.SourcesDirectory)"; c
+
+       $env:HOME = "$(Build.SourcesDirectory)"
+       $env:MSYSTEM = "MINGW64"
+       git-sdk-64\git-cmd --command=usr\\bin\\bash.exe -lc @"
+         . ci/lib.sh
+
+         make -j10 DEVELOPER=1 NO_PERL=1 || exit 1
+         NO_PERL=1 NO_SVN_TESTS=1 GIT_TEST_OPTS=\"--no-chain-lint --no-bin-wrappers --quiet --write-junit-xml\" time make -j15 -k DEVELOPER=1 test || {
+           NO_PERL=1 NO_SVN_TESTS=1 GIT_TEST_OPTS=\"-i -v -x\" make -k -C t failed; exit 1
+         }
+
+         save_good_tree
+       "@
+       c
+
+       if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
+         cmd /c rmdir "$(Build.SourcesDirectory)\test-cache"
+       }
+    displayName: 'build & test'
+    env:
+      GITFILESHAREPWD: $(gitfileshare.pwd)
+  - task: PublishTestResults@2
+    displayName: 'Publish Test Results **/TEST-*.xml'
+    inputs:
+      mergeTestResults: true
+      testRunTitle: 'windows'
+      platform: Windows
+      publishRunAttachments: false
+    condition: succeededOrFailed()
+
 - phase: linux_clang
   displayName: linux-clang
   condition: succeeded()
@@ -157,84 +235,6 @@ phases:
       mergeTestResults: true
       testRunTitle: 'gettext-poison'
       platform: Linux
-      publishRunAttachments: false
-    condition: succeededOrFailed()
-
-- phase: windows
-  displayName: Windows
-  condition: succeeded()
-  queue:
-    name: Hosted
-    timeoutInMinutes: 240
-  steps:
-  - powershell: |
-       # Helper to check the error level of the latest command (exit with error when appropriate)
-       function c() { if (!$?) { exit(1) } }
-
-       if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
-         net use s: \\gitfileshare.file.core.windows.net\test-cache "$GITFILESHAREPWD" /user:AZURE\gitfileshare /persistent:no; c
-         cmd /c mklink /d "$(Build.SourcesDirectory)\test-cache" S:\; c
-       }
-
-       # Add build agent's MinGit to PATH
-       $env:PATH = $env:AGENT_HOMEDIRECTORY +"\externals\\git\cmd;" +$env:PATH
-
-       # Helper to initialize (or update) a Git worktree
-       function init ($path, $url, $set_origin) {
-           if (Test-Path $path) {
-               cd $path; c
-               if (Test-Path .git) {
-                   git init; c
-               } else {
-                   git status
-               }
-           } else {
-               git init $path; c
-               cd $path; c
-           }
-           git config core.autocrlf false; c
-           git config core.untrackedCache true; c
-           if (($set_origin -ne 0) -and !(git config remote.origin.url)) {
-               git remote add origin $url; c
-           }
-           git fetch --depth=1 $url master; c
-           git reset --hard FETCH_HEAD; c
-           git clean -df; c
-       }
-
-       # Initialize Git for Windows' SDK
-       $sdk_path = "$(Build.SourcesDirectory)\git-sdk-64"
-       init "$sdk_path" "https://dev.azure.com/git-for-windows/git-sdk-64/_git/git-sdk-64" 0
-       init usr\src\build-extra https://github.com/git-for-windows/build-extra 1
-
-       cd "$(Build.SourcesDirectory)"; c
-
-       $env:HOME = "$(Build.SourcesDirectory)"
-       $env:MSYSTEM = "MINGW64"
-       git-sdk-64\git-cmd --command=usr\\bin\\bash.exe -lc @"
-         . ci/lib.sh
-
-         make -j10 DEVELOPER=1 NO_PERL=1 || exit 1
-         NO_PERL=1 NO_SVN_TESTS=1 GIT_TEST_OPTS=\"--no-chain-lint --no-bin-wrappers --quiet --write-junit-xml\" time make -j15 -k DEVELOPER=1 test || {
-           NO_PERL=1 NO_SVN_TESTS=1 GIT_TEST_OPTS=\"-i -v -x\" make -k -C t failed; exit 1
-         }
-
-         save_good_tree
-       "@
-       c
-
-       if ("$GITFILESHAREPWD" -ne "" -and "$GITFILESHAREPWD" -ne "`$`(gitfileshare.pwd)") {
-         cmd /c rmdir "$(Build.SourcesDirectory)\test-cache"
-       }
-    displayName: 'build & test'
-    env:
-      GITFILESHAREPWD: $(gitfileshare.pwd)
-  - task: PublishTestResults@2
-    displayName: 'Publish Test Results **/TEST-*.xml'
-    inputs:
-      mergeTestResults: true
-      testRunTitle: 'windows'
-      platform: Windows
       publishRunAttachments: false
     condition: succeededOrFailed()
 
