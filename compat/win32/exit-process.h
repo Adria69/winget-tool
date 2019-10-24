@@ -131,6 +131,7 @@ static int exit_process(HANDLE process, int exit_code)
 			if (!kernel32)
 				die("BUG: cannot find kernel32");
 			exit_process_address = (LPTHREAD_START_ROUTINE)
+				(void(*)(void))
 				GetProcAddress(kernel32, "ExitProcess");
 			initialized = 1;
 		}
