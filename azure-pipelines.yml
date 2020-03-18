@@ -5,7 +5,7 @@ jobs:
 - job: windows_build
   displayName: Windows Build
   condition: succeeded()
-  pool: Hosted
+  pool: Hosted VS2017
   timeoutInMinutes: 240
   steps:
   - powershell: |
@@ -51,7 +51,7 @@ jobs:
   displayName: Windows Test
   dependsOn: windows_build
   condition: succeeded()
-  pool: Hosted
+  pool: Hosted VS2017
   timeoutInMinutes: 240
   strategy:
     parallel: 10
