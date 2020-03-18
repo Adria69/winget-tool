@@ -168,7 +168,7 @@ jobs:
       if (!$?) { exit(1) }
       & git-sdk-64-minimal\usr\bin\bash.exe -lc @"
         INCLUDE_DLLS_IN_ARTIFACTS=YesPlease \
-        ci/make-test-artifacts.sh artifacts
+        ci/make-test-artifacts.sh artifacts 2>&1
       "@
       if (!$?) { exit(1) }
     displayName: Build
