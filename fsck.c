@@ -7,6 +7,7 @@
 #include "tag.h"
 #include "fsck.h"
 #include "refs.h"
+#include "url.h"
 #include "utf8.h"
 #include "sha1-array.h"
 #include "decorate.h"
