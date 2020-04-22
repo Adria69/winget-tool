@@ -121,6 +121,11 @@ ifeq ($(uname_S),Darwin)
 	BASIC_CFLAGS += -DPROTECT_HFS_DEFAULT=1
 	HAVE_BSD_SYSCTL = YesPlease
 	FREAD_READS_DIRECTORIES = UnfortunatelyYes
+	BASIC_CFLAGS += -I/usr/local/include -I/usr/local/opt/gettext/include
+	BASIC_LDFLAGS += -L/usr/local/lib -L/usr/local/opt/gettext/lib
+	ifeq ($(shell test -x /usr/local/opt/gettext/bin/msgfmt && echo y),y)
+		MSGFMT = /usr/local/opt/gettext/bin/msgfmt
+	endif
 endif
 ifeq ($(uname_S),SunOS)
 	NEEDS_SOCKET = YesPlease
