@@ -343,6 +343,11 @@ typedef uintmax_t timestamp_t;
 #define _PATH_DEFPATH "/usr/local/bin:/usr/bin:/bin"
 #endif
 
+int lstat_cache_aware_rmdir(const char *path);
+#if !defined(__MINGW32__) && !defined(_MSC_VER)
+#define rmdir lstat_cache_aware_rmdir
+#endif
+
 #ifndef platform_core_config
 static inline int noop_core_config(const char *var, const char *value, void *cb)
 {
