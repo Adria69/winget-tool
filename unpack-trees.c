@@ -415,6 +415,9 @@ static int check_updates(struct unpack_trees_options *o,
 	if (o->clone)
 		setup_collided_checkout_detection(&state, index);
 
+	/* Start with clean cache to avoid using any possibly outdated info. */
+	invalidate_lstat_cache();
+
 	progress = get_progress(o, index);
 
 	git_attr_set_direction(GIT_ATTR_CHECKOUT);
