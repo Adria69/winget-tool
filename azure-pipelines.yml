@@ -473,7 +473,7 @@ jobs:
   displayName: StaticAnalysis
   condition: succeeded()
   pool:
-    vmImage: ubuntu-latest
+    vmImage: ubuntu-18.04
   steps:
   - bash: |
        test "$GITFILESHAREPWD" = '$(gitfileshare.pwd)' || ci/mount-fileshare.sh //gitfileshare.file.core.windows.net/test-cache gitfileshare "$GITFILESHAREPWD" "$HOME/test-cache" || exit 1
