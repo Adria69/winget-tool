@@ -560,8 +560,10 @@ int mingw_rmdir(const char *pathname)
 		return -1;
 
 	do {
-		if (!_wrmdir(wpathname))
+		if (!_wrmdir(wpathname)) {
+			invalidate_lstat_cache();
 			return 0;
+		}
 		if (!is_file_in_use_error(GetLastError()))
 			errno = err_win_to_posix(GetLastError());
 		if (errno != EACCES)
