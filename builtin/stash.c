@@ -33,6 +33,7 @@ static const char * const git_stash_usage[] = {
 	   "          [--] [<pathspec>...]]"),
 	N_("git stash save [-p|--patch] [-S|--staged] [-k|--[no-]keep-index] [-q|--quiet]\n"
 	   "          [-u|--include-untracked] [-a|--all] [<message>]"),
+	N_("git stash export (--print | --to-ref <ref>) [<stash>...]"),
 	NULL
 };
 
@@ -88,6 +89,12 @@ static const char * const git_stash_save_usage[] = {
 	   "               [-u|--include-untracked] [-a|--all] [<message>]"),
 	NULL
 };
+
+static const char * const git_stash_export_usage[] = {
+	N_("git stash export (--print | --to-ref <ref>) [<stash>...]"),
+	NULL
+};
+
 
 static const char ref_stash[] = "refs/stash";
 static struct strbuf stash_index_path = STRBUF_INIT;
@@ -1775,6 +1782,179 @@ static int save_stash(int argc, const char **argv, const char *prefix)
 	return ret;
 }
 
+static int write_commit_with_parents(struct object_id *out, const struct object_id *oid, struct commit_list *parents)
+{
+	size_t author_len, committer_len;
+	struct commit *this;
+	const char *orig_author, *orig_committer;
+	char *author = NULL, *committer = NULL;
+	const char *buffer;
+	unsigned long bufsize;
+	const char *p;
+	struct strbuf msg = STRBUF_INIT;
+	int ret = 0;
+
+	this = lookup_commit_reference(the_repository, oid);
+	buffer = get_commit_buffer(this, &bufsize);
+	orig_author = find_commit_header(buffer, "author", &author_len);
+	orig_committer = find_commit_header(buffer, "committer", &committer_len);
+	p = memmem(buffer, bufsize, "\n\n", 2);
+
+	if (!orig_author || !orig_committer || !p) {
+		ret = error(_("cannot parse commit %s"), oid_to_hex(oid));
+		goto out;
+	}
+	/* Jump to message. */
+	p += 2;
+	strbuf_addstr(&msg, "git stash: ");
+	strbuf_add(&msg, p, bufsize - (p - buffer));
+
+	author = xmemdupz(orig_author, author_len);
+	committer = xmemdupz(orig_committer, committer_len);
+
+	if (commit_tree_extended(msg.buf, msg.len,
+				 the_hash_algo->empty_tree, parents,
+				 out, author, committer,
+				 NULL, NULL)) {
+		ret = error(_("could not write commit"));
+		goto out;
+	}
+out:
+	strbuf_release(&msg);
+	unuse_commit_buffer(this, buffer);
+	free(author);
+	free(committer);
+	return ret;
+}
+
+static int do_export_stash(const char *ref, int argc, const char **argv)
+{
+	struct object_id base;
+	struct object_context unused;
+	struct commit *prev;
+	struct object_id *items = NULL;
+	int nitems = 0, nalloc = 0;
+	int res = 0;
+	int i;
+	struct strbuf revision = STRBUF_INIT;
+	const char *author, *committer;
+
+	/*
+	 * This is an arbitrary, fixed date, specifically the one used by git
+	 * format-patch.  The goal is merely to produce reproducible output.
+	 */
+	prepare_fallback_ident("git stash", "git@stash");
+	author = fmt_ident("git stash", "git@stash", WANT_BLANK_IDENT,
+			   "2001-09-17T00:00:00Z", 0);
+	committer = fmt_ident("git stash", "git@stash", WANT_BLANK_IDENT,
+			      "2001-09-17T00:00:00Z", 0);
+
+	/* First, we create a single empty commit. */
+	if (commit_tree_extended(NULL, 0, the_hash_algo->empty_tree, NULL,
+				 &base, author, committer, NULL, NULL))
+		return error(_("unable to write base commit"));
+
+	prev = lookup_commit_reference(the_repository, &base);
+
+	if (argc) {
+		/*
+		 * Find each specified stash, and load data into the array.
+		 */
+		for (i = 0; i < argc; i++) {
+			ALLOC_GROW_BY(items, nitems, 1, nalloc);
+			if (parse_revision(&revision, argv[i], 1) ||
+			    get_oid_with_context(the_repository, revision.buf,
+						 GET_OID_QUIETLY | GET_OID_GENTLY,
+						 &items[i], &unused)) {
+				res = error(_("unable to find stash entry %s"), argv[i]);
+				goto out;
+			}
+		}
+	} else {
+		/*
+		 * Walk the reflog, finding each stash entry, and load data into the
+		 * array.
+		 */
+		for (i = 0;; i++) {
+			char buf[32];
+			struct object_id oid;
+
+			snprintf(buf, sizeof(buf), "%d", i);
+			if (parse_revision(&revision, buf, 1) ||
+			    get_oid_with_context(the_repository, revision.buf,
+						 GET_OID_QUIETLY | GET_OID_GENTLY,
+						 &oid, &unused))
+				break;
+			ALLOC_GROW_BY(items, nitems, 1, nalloc);
+			oidcpy(&items[i], &oid);
+		}
+	}
+
+	/*
+	 * Now, create a set of commits identical to the regular stash commits,
+	 * but where their first parents form a chain to our original empty
+	 * base commit.
+	 */
+	for (i = nitems - 1; i >= 0; i--) {
+		struct commit_list *parents = NULL;
+		struct commit_list **next = &parents;
+		struct object_id out;
+
+		next = commit_list_append(prev, next);
+		next = commit_list_append(lookup_commit_reference(the_repository, &items[i]), next);
+		res = write_commit_with_parents(&out, &items[i], parents);
+		if (res)
+			goto out;
+		prev = lookup_commit_reference(the_repository, &out);
+	}
+	if (ref)
+		update_ref(NULL, ref, &prev->object.oid, NULL, 0, UPDATE_REFS_DIE_ON_ERR);
+	else
+		puts(oid_to_hex(&prev->object.oid));
+out:
+	strbuf_release(&revision);
+	free(items);
+
+	return res;
+}
+
+enum export_action {
+	ACTION_NONE,
+	ACTION_PRINT,
+	ACTION_TO_REF,
+};
+
+static int export_stash(int argc, const char **argv, const char *prefix)
+{
+	const char *ref = NULL;
+	enum export_action action = ACTION_NONE;
+	struct option options[] = {
+		OPT_CMDMODE(0, "print", &action,
+			    N_("print the object ID instead of writing it to a ref"),
+			    ACTION_PRINT),
+		OPT_CMDMODE(0, "to-ref", &action,
+			    N_("save the data to the given ref"),
+			    ACTION_TO_REF),
+		OPT_END()
+	};
+
+	argc = parse_options(argc, argv, prefix, options,
+			     git_stash_export_usage,
+			     PARSE_OPT_KEEP_DASHDASH);
+
+	if (action == ACTION_NONE) {
+		return error(_("exactly one of --print and --to-ref is required"));
+	} else if (action == ACTION_TO_REF) {
+		if (!argc)
+			return error(_("--to-ref requires an argument"));
+		ref = argv[0];
+		argc--;
+		argv++;
+	}
+
+	return do_export_stash(ref, argc, argv);
+}
+
 int cmd_stash(int argc, const char **argv, const char *prefix)
 {
 	pid_t pid = getpid();
@@ -1818,6 +1998,8 @@ int cmd_stash(int argc, const char **argv, const char *prefix)
 		return !!push_stash(argc, argv, prefix, 0);
 	else if (!strcmp(argv[0], "save"))
 		return !!save_stash(argc, argv, prefix);
+	else if (!strcmp(argv[0], "export"))
+		return !!export_stash(argc, argv, prefix);
 	else if (*argv[0] != '-')
 		usage_msg_optf(_("unknown subcommand: %s"),
 			       git_stash_usage, options, argv[0]);
