@@ -606,7 +606,7 @@ if ($suppress_cc{'body'}) {
 # Set confirm's default value
 my $confirm_unconfigured = !defined $confirm;
 if ($confirm_unconfigured) {
-	$confirm = scalar %suppress_cc ? 'compose' : 'auto';
+	$confirm = 'always';
 };
 # Please update $__git_send_email_confirm_options in
 # git-completion.bash when you add new options.

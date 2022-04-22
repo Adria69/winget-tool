@@ -74,8 +74,8 @@ check_no_confirm () {
 	return 0
 }
 
-test_expect_success $PREREQ 'No confirm with --suppress-cc' '
-	test_no_confirm --suppress-cc=sob &&
+test_expect_success $PREREQ 'No confirm with --confirm=compose --suppress-cc' '
+	test_no_confirm --confirm=compose --suppress-cc=sob &&
 	check_no_confirm
 '
 
@@ -1032,16 +1032,10 @@ test_expect_success $PREREQ '--confirm=compose' '
 	test_confirm --confirm=compose --compose
 '
 
-test_expect_success $PREREQ 'confirm by default (due to cc)' '
+test_expect_success $PREREQ 'confirm by default' '
 	test_when_finished git config sendemail.confirm never &&
 	git config --unset sendemail.confirm &&
-	test_confirm
-'
-
-test_expect_success $PREREQ 'confirm by default (due to --compose)' '
-	test_when_finished git config sendemail.confirm never &&
-	git config --unset sendemail.confirm &&
-	test_confirm --suppress-cc=all --compose
+	test_confirm --suppress-cc=all
 '
 
 test_expect_success $PREREQ 'confirm detects EOF (inform assumes y)' '
