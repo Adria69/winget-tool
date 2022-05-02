@@ -34,6 +34,8 @@ struct batch_options {
 	const char *format;
 };
 
+#define DEFAULT_FORMAT "%(objectname) %(objecttype) %(objectsize)"
+
 static const char *force_path;
 
 static int filter_object(const char *path, unsigned mode,
@@ -556,6 +558,16 @@ static void parse_cmd_info(struct batch_options *opt,
 	batch_one_object(line, output, opt, data);
 }
 
+static const struct parse_cmd {
+	const char *name;
+	parse_cmd_fn_t fn;
+	unsigned takes_args;
+} commands[] = {
+	{ "contents", parse_cmd_contents, 1},
+	{ "info", parse_cmd_info, 1},
+	{ "flush", NULL, 0},
+};
+
 static void dispatch_calls(struct batch_options *opt,
 		struct strbuf *output,
 		struct expand_data *data,
@@ -582,17 +594,6 @@ static void free_cmds(struct queued_cmd *cmd, size_t *nr)
 
 	*nr = 0;
 }
-
-
-static const struct parse_cmd {
-	const char *name;
-	parse_cmd_fn_t fn;
-	unsigned takes_args;
-} commands[] = {
-	{ "contents", parse_cmd_contents, 1},
-	{ "info", parse_cmd_info, 1},
-	{ "flush", NULL, 0},
-};
 
 static void batch_objects_command(struct batch_options *opt,
 				    struct strbuf *output,
@@ -658,8 +659,6 @@ static void batch_objects_command(struct batch_options *opt,
 	free(queued_cmd);
 	strbuf_release(&input);
 }
-
-#define DEFAULT_FORMAT "%(objectname) %(objecttype) %(objectsize)"
 
 static int batch_objects(struct batch_options *opt)
 {
