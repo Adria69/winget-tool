@@ -436,10 +436,12 @@ static int fetch_refs_via_pack(struct transport *transport,
 			       int nr_heads, struct ref **to_fetch)
 {
 	int ret = 0;
+	size_t i;
 	struct git_transport_data *data = transport->data;
 	struct ref *refs = NULL;
 	struct fetch_pack_args args;
 	struct ref *refs_tmp = NULL;
+	struct ref *wanted_refs = xcalloc(1, sizeof (struct ref));
 
 	memset(&args, 0, sizeof(args));
 	args.uploadpack = data->options.uploadpack;
@@ -468,10 +470,19 @@ static int fetch_refs_via_pack(struct transport *transport,
 	args.object_info = transport->smart_options->object_info;
 
 	if (transport->smart_options && transport->smart_options->object_info) {
+		struct ref *ref = wanted_refs;
+
 		if (!fetch_object_info(transport, data->options.object_info_data))
 			goto cleanup;
-		ret = -1;
-		goto cleanup;
+		args.object_info_data = data->options.object_info_data;
+		for (i = 0; i < transport->smart_options->object_info_oids->nr; i++) {
+			struct ref *temp_ref = xcalloc(1, sizeof (struct ref));
+			temp_ref->old_oid = *(transport->smart_options->object_info_oids->oid + i);
+			temp_ref->exact_oid = 1;
+			ref->next = temp_ref;
+			ref = ref->next;
+		}
+		transport->remote_refs = wanted_refs->next;
 	} else if (!data->got_remote_heads) {
 		int i;
 		int must_list_refs = 0;
@@ -489,7 +500,7 @@ static int fetch_refs_via_pack(struct transport *transport,
 	else if (data->version <= protocol_v1)
 		die_if_server_options(transport);
 
-	if (data->options.acked_commits) {
+	if (data->options.acked_commits && !transport->smart_options->object_info) {
 		if (data->version < protocol_v2) {
 			warning(_("--negotiate-only requires protocol v2"));
 			ret = -1;
@@ -532,6 +543,7 @@ cleanup:
 
 	free_refs(refs_tmp);
 	free_refs(refs);
+	free_refs(wanted_refs);
 	return ret;
 }
 
