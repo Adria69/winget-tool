@@ -69,6 +69,12 @@ struct fetch_pack_args {
 	unsigned connectivity_checked:1;
 };
 
+struct object_info_args {
+	const struct string_list *object_info_options;
+	const struct string_list *server_options;
+	const struct oid_array *oids;
+};
+
 /*
  * sought represents remote references that should be updated from.
  * On return, the names that were found on the remote will have been
@@ -101,5 +107,7 @@ void negotiate_using_fetch(const struct oid_array *negotiation_tips,
  * matched.  Return 0 if all sought refs were matched, otherwise 1.
  */
 int report_unmatched_refs(struct ref **sought, int nr_sought);
+
+void send_object_info_request(int fd_out, struct object_info_args *args);
 
 #endif
