@@ -2659,3 +2659,19 @@ out:
 		munmap(map, mapsize);
 	return ret;
 }
+
+void free_object_info_contents(struct object_info *object_info)
+{
+	if (!object_info)
+		return;
+	if (object_info->typep)
+		free(object_info->typep);
+	if (object_info->sizep)
+		free(object_info->sizep);
+	if (object_info->disk_sizep)
+		free(object_info->disk_sizep);
+	if (object_info->delta_base_oid)
+		free(object_info->delta_base_oid);
+	if (object_info->type_name)
+		free(object_info->type_name);
+}
