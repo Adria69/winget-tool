@@ -503,7 +503,7 @@ static int get_remote_info(struct batch_options *opt, int argc, const char **arg
 		size_t j;
 		int include_size = 0, include_type = 0;
 
-		remote_object_info = xcalloc(object_info_oids.nr, sizeof(struct object_info));
+		CALLOC_ARRAY(remote_object_info, object_info_oids.nr);
 		gtransport->smart_options->object_info = 1;
 		gtransport->smart_options->object_info_oids = &object_info_oids;
 		/**
