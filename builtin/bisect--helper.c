@@ -1325,7 +1325,7 @@ int cmd_bisect__helper(int argc, const char **argv, const char *prefix)
 		break;
 	case BISECT_TERMS:
 		if (argc > 1)
-			return error(_("--bisect-terms requires 0 or 1 argument"));
+			die(_("--bisect-terms requires 0 or 1 argument"));
 		res = bisect_terms(&terms, argc == 1 ? argv[0] : NULL);
 		break;
 	case BISECT_SKIP:
@@ -1335,13 +1335,13 @@ int cmd_bisect__helper(int argc, const char **argv, const char *prefix)
 		break;
 	case BISECT_NEXT:
 		if (argc)
-			return error(_("--bisect-next requires 0 arguments"));
+			die(_("--bisect-next requires 0 arguments"));
 		get_terms(&terms);
 		res = bisect_next(&terms, prefix);
 		break;
 	case BISECT_RESET:
 		if (argc > 1)
-			return error(_("--bisect-reset requires either no argument or a commit"));
+			die(_("--bisect-reset requires either no argument or a commit"));
 		res = bisect_reset(argc ? argv[0] : NULL);
 		break;
 	case BISECT_VISUALIZE:
@@ -1350,18 +1350,18 @@ int cmd_bisect__helper(int argc, const char **argv, const char *prefix)
 		break;
 	case BISECT_REPLAY:
 		if (argc != 1)
-			return error(_("no logfile given"));
+			die(_("no logfile given"));
 		set_terms(&terms, "bad", "good");
 		res = bisect_replay(&terms, argv[0]);
 		break;
 	case BISECT_LOG:
 		if (argc)
-			return error(_("--bisect-log requires 0 arguments"));
+			die(_("--bisect-log requires 0 arguments"));
 		res = bisect_log();
 		break;
 	case BISECT_RUN:
 		if (!argc)
-			return error(_("bisect run failed: no command provided."));
+			die(_("bisect run failed: no command provided."));
 		get_terms(&terms);
 		res = bisect_run(&terms, argv, argc);
 		break;
