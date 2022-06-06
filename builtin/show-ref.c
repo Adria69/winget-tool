@@ -15,7 +15,7 @@ static const char * const show_ref_usage[] = {
 };
 
 static int deref_tags, show_head, tags_only, heads_only, matches_nr, verify,
-	   quiet, hash_only, abbrev, exclude_arg;
+	   quiet, hash_only, abbrev, exclude_arg, max_count = 0;
 static const char **pattern;
 static const char *exclude_existing_arg;
 
@@ -82,6 +82,8 @@ match:
 
 	show_one(refname, oid);
 
+	if (max_count && matches_nr >= max_count)
+		return -1; /* avoid opening any more refs */
 	return 0;
 }
 
@@ -178,6 +180,7 @@ static const struct option show_ref_options[] = {
 	OPT_CALLBACK_F(0, "exclude-existing", &exclude_existing_arg,
 		       N_("pattern"), N_("show refs from stdin that aren't in local repository"),
 		       PARSE_OPT_OPTARG | PARSE_OPT_NONEG, exclude_existing_callback),
+	OPT_INTEGER(0, "count", &max_count, N_("show only <n> matched refs")),
 	OPT_END()
 };
 
@@ -187,6 +190,24 @@ int cmd_show_ref(int argc, const char **argv, const char *prefix)
 
 	argc = parse_options(argc, argv, prefix, show_ref_options,
 			     show_ref_usage, 0);
+
+	if (max_count) {
+		int compatible = 0;
+
+		if (max_count < 0)
+			error(_("invalid --count argument: (`%d' < 0)"),
+			      max_count);
+		else if (verify)
+			error(_("--count is incompatible with %s"), "--verify");
+		else if (exclude_arg)
+			error(_("--count is incompatible with %s"),
+			      "--exclude-existing");
+		else
+			compatible = 1;
+
+		if (!compatible)
+			usage_with_options(show_ref_usage, show_ref_options);
+	}
 
 	if (exclude_arg)
 		return exclude_existing(exclude_existing_arg);
