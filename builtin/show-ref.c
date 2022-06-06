@@ -14,7 +14,7 @@ static const char * const show_ref_usage[] = {
 	NULL
 };
 
-static int deref_tags, show_head, tags_only, heads_only, found_match, verify,
+static int deref_tags, show_head, tags_only, heads_only, matches_nr, verify,
 	   quiet, hash_only, abbrev, exclude_arg;
 static const char **pattern;
 static const char *exclude_existing_arg;
@@ -78,7 +78,7 @@ static int show_ref(const char *refname, const struct object_id *oid,
 	}
 
 match:
-	found_match++;
+	matches_nr++;
 
 	show_one(refname, oid);
 
@@ -217,7 +217,7 @@ int cmd_show_ref(int argc, const char **argv, const char *prefix)
 	if (show_head)
 		head_ref(show_ref, NULL);
 	for_each_ref(show_ref, NULL);
-	if (!found_match) {
+	if (!matches_nr) {
 		if (verify && !quiet)
 			die("No match");
 		return 1;
