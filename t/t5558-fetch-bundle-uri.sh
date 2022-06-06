@@ -28,7 +28,9 @@ test_expect_success 'fetch file bundle' '
 	git -C fetch-to fetch --bundle-uri="$(pwd)/fetch-from/B.bundle" &&
 	git -C fetch-to rev-parse refs/bundles/topic >actual &&
 	git -C fetch-from rev-parse topic >expect &&
-	test_cmp expect actual
+	test_cmp expect actual &&
+
+	test_config log.excludedecoration refs/bundle/
 '
 
 test_expect_success 'fetch file:// bundle' '
@@ -36,7 +38,9 @@ test_expect_success 'fetch file:// bundle' '
 	git -C fetch-file fetch --bundle-uri="file://$(pwd)/fetch-from/B.bundle" &&
 	git -C fetch-file rev-parse refs/bundles/topic >actual &&
 	git -C fetch-from rev-parse topic >expect &&
-	test_cmp expect actual
+	test_cmp expect actual &&
+
+	test_config log.excludedecoration refs/bundle/
 '
 
 #########################################################################
@@ -62,7 +66,9 @@ test_expect_success 'fetch HTTP bundle' '
 	git -C fetch-http fetch --bundle-uri="$HTTPD_URL/B.bundle" &&
 	git -C fetch-http rev-parse refs/bundles/topic >actual &&
 	git -C fetch-from rev-parse topic >expect &&
-	test_cmp expect actual
+	test_cmp expect actual &&
+
+	test_config log.excludedecoration refs/bundle/
 '
 
 # Do not add tests here unless they use the HTTP server, as they will

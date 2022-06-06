@@ -321,4 +321,5 @@ endif::git-pull[]
 --bundle-uri=<uri>::
 	Instead of fetching from a remote, fetch a bundle from the given
 	`<uri>` and unbundle the data into the local repository. The refs
-	in the bundle will be stored under the `refs/bundle/*` namespace.
+	in the bundle will be stored under the hidden `refs/bundle/*`
+	namespace.

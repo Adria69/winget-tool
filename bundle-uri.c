@@ -1,6 +1,7 @@
 #include "cache.h"
 #include "bundle-uri.h"
 #include "bundle.h"
+#include "config.h"
 #include "object-store.h"
 #include "refs.h"
 #include "run-command.h"
@@ -151,6 +152,12 @@ int fetch_bundle_uri(struct repository *r, const char *uri)
 
 	if ((result = unbundle_from_file(r, filename.buf)))
 		goto cleanup;
+
+	git_config_set_multivar_gently("log.excludedecoration",
+					"refs/bundle/",
+					"refs/bundle/",
+					CONFIG_FLAGS_FIXED_VALUE |
+					CONFIG_FLAGS_MULTI_REPLACE);
 
 cleanup:
 	unlink(filename.buf);
