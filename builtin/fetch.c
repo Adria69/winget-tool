@@ -29,6 +29,7 @@
 #include "commit-graph.h"
 #include "shallow.h"
 #include "worktree.h"
+#include "bundle-uri.h"
 
 #define FORCED_UPDATES_DELAY_WARNING_IN_MS (10 * 1000)
 
@@ -37,6 +38,7 @@ static const char * const builtin_fetch_usage[] = {
 	N_("git fetch [<options>] <group>"),
 	N_("git fetch --multiple [<options>] [(<repository> | <group>)...]"),
 	N_("git fetch --all [<options>]"),
+	N_("git fetch --bundle-uri=<uri> [<options>]"),
 	NULL
 };
 
@@ -86,6 +88,7 @@ static struct string_list negotiation_tip = STRING_LIST_INIT_NODUP;
 static int fetch_write_commit_graph = -1;
 static int stdin_refspecs = 0;
 static int negotiate_only;
+static const char *bundle_uri;
 
 static int git_fetch_config(const char *k, const char *v, void *cb)
 {
@@ -224,6 +227,8 @@ static struct option builtin_fetch_options[] = {
 		 N_("write the commit-graph after fetching")),
 	OPT_BOOL(0, "stdin", &stdin_refspecs,
 		 N_("accept refspecs from stdin")),
+	OPT_STRING(0, "bundle-uri", &bundle_uri, N_("uri"),
+		   N_("download bundle data from the given URI instead of from a remote")),
 	OPT_END()
 };
 
@@ -2180,6 +2185,11 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 	/* FETCH_HEAD never gets updated in --dry-run mode */
 	if (dry_run)
 		write_fetch_head = 0;
+
+	if (bundle_uri) {
+		result = fetch_bundle_uri(the_repository, bundle_uri);
+		goto cleanup;
+	}
 
 	if (all) {
 		if (argc == 1)

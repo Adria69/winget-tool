@@ -76,11 +76,15 @@ int fetch_bundle_uri(struct repository *r, const char *uri)
 	struct strbuf filename = STRBUF_INIT;
 
 	find_temp_filename(&filename);
-	if ((result = copy_uri_to_file(uri, filename.buf)))
+	if ((result = copy_uri_to_file(uri, filename.buf))) {
+		error(_("failed to download bundle from URI '%s'"), uri);
 		goto cleanup;
+	}
 
-	if ((result = !is_bundle(filename.buf, 0)))
+	if ((result = !is_bundle(filename.buf, 0))) {
+		error(_("file at URI '%s' is not a bundle"), uri);
 		goto cleanup;
+	}
 
 	if ((result = unbundle_from_file(r, filename.buf)))
 		goto cleanup;
