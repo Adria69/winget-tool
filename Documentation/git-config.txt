@@ -343,6 +343,7 @@ You can change the way options are read/written by specifying the path to a
 file (`--file`), or by specifying a configuration scope (`--system`,
 `--global`, `--local`, `--worktree`); see <<OPTIONS>> above.
 
+[[SCOPES]]
 SCOPES
 ------
 
@@ -379,6 +380,18 @@ configuration file). See <<OPTIONS>> above for a complete description.
 Most configuration options are respected regardless of the scope it is
 defined in, but some options are only respected in certain scopes. See the
 option's documentation for the full details.
+
+Protected config
+~~~~~~~~~~~~~~~~
+
+Protected config refers to the 'system', 'global', and 'command' scopes. Git
+considers these scopes to be especially trustworthy because they are likely
+to be controlled by the user or a trusted administrator. An attacker who
+controls these scopes can do substantial harm without using Git, so it is
+assumed that the user's environment protects these scopes against attackers.
+
+For security reasons, certain options are only respected when they are
+specified in protected config, and ignored otherwise.
 
 ENVIRONMENT
 -----------
