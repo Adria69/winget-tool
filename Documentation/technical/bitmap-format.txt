@@ -125,6 +125,10 @@ MIDXs, both the bit-cache and rev-cache extensions are required.
 
 		** The compressed bitmap itself, see Appendix A.
 
+	* TRAILER:
+
+		Index checksum of the above contents. It is a 20-byte SHA1 checksum.
+
 == Appendix A: Serialization format for an EWAH bitmap
 
 Ewah bitmaps are serialized in the same protocol as the JAVAEWAH
