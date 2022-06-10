@@ -407,8 +407,7 @@ Administering
 --
 +
 Default is the value of `sendemail.confirm` configuration value; if that
-is unspecified, default to 'auto' unless any of the suppress options
-have been specified, in which case default to 'compose'.
+is unspecified, default to 'always'.
 
 --dry-run::
 	Do everything except actually send the emails.
