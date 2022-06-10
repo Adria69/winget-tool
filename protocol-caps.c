@@ -11,6 +11,7 @@
 
 struct requested_info {
 	unsigned size : 1;
+	unsigned unknown : 1;
 };
 
 /*
@@ -40,11 +41,11 @@ static void send_info(struct repository *r, struct packet_writer *writer,
 	struct string_list_item *item;
 	struct strbuf send_buffer = STRBUF_INIT;
 
-	if (!oid_str_list->nr)
-		return;
-
 	if (info->size)
 		packet_writer_write(writer, "size");
+
+	if (info->unknown || !oid_str_list->nr)
+		goto release;
 
 	for_each_string_list_item (item, oid_str_list) {
 		const char *oid_str = item->string;
@@ -72,12 +73,13 @@ static void send_info(struct repository *r, struct packet_writer *writer,
 		packet_writer_write(writer, "%s", send_buffer.buf);
 		strbuf_reset(&send_buffer);
 	}
+release:
 	strbuf_release(&send_buffer);
 }
 
 int cap_object_info(struct repository *r, struct packet_reader *request)
 {
-	struct requested_info info;
+	struct requested_info info = { 0 };
 	struct packet_writer writer;
 	struct string_list oid_str_list = STRING_LIST_INIT_DUP;
 
@@ -92,9 +94,7 @@ int cap_object_info(struct repository *r, struct packet_reader *request)
 		if (parse_oid(request->line, &oid_str_list))
 			continue;
 
-		packet_writer_error(&writer,
-				    "object-info: unexpected line: '%s'",
-				    request->line);
+		info.unknown = 1;
 	}
 
 	if (request->status != PACKET_READ_FLUSH) {
