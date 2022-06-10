@@ -470,9 +470,10 @@ static inline int git_offset_1st_component(const char *path)
  * maybe provide you with a patch that would prevent this issue again
  * in the future.
  */
-static inline void extract_id_from_env(const char *env, uid_t *id)
+static inline int id_from_env_matches(const char *env, uid_t id)
 {
 	const char *real_uid = getenv(env);
+	int matches = 0;
 
 	/* discard anything empty to avoid a more complex check below */
 	if (real_uid && *real_uid) {
@@ -482,9 +483,10 @@ static inline void extract_id_from_env(const char *env, uid_t *id)
 		errno = 0;
 		/* silent overflow errors could trigger a bug here */
 		env_id = strtoul(real_uid, &endptr, 10);
-		if (!*endptr && !errno)
-			*id = env_id;
+		if (!*endptr && !errno && (uid_t)env_id == id)
+			matches = 1;
 	}
+	return matches;
 }
 
 static inline int is_path_owned_by_current_uid(const char *path)
@@ -496,10 +498,13 @@ static inline int is_path_owned_by_current_uid(const char *path)
 		return 0;
 
 	euid = geteuid();
-	if (euid == ROOT_UID)
-		extract_id_from_env("SUDO_UID", &euid);
+	if (st.st_uid == euid)
+		return 1;
 
-	return st.st_uid == euid;
+	if (euid == ROOT_UID)
+		return id_from_env_matches("SUDO_UID", st.st_uid);
+
+	return 0;
 }
 
 #define is_path_owned_by_current_user is_path_owned_by_current_uid
