@@ -253,12 +253,12 @@ static int delete_branches(int argc, const char **argv, int force, int kinds,
 		name = mkpathdup(fmt, bname.buf);
 
 		if (kinds == FILTER_REFS_BRANCHES) {
-			const struct worktree *wt =
-				find_shared_symref(worktrees, "HEAD", name);
-			if (wt) {
+			char *path;
+			if (branch_checked_out(name, &path)) {
 				error(_("Cannot delete branch '%s' "
 					"checked out at '%s'"),
-				      bname.buf, wt->path);
+				      bname.buf, path);
+				free(path);
 				ret = 1;
 				continue;
 			}
