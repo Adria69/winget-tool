@@ -47,10 +47,22 @@ struct cached_dir {
 	struct untracked_cache_dir *ucd;
 };
 
+/*
+ * Support data structure for the recursing into the directory tree.
+ */
+struct traversal_cache {
+	/*
+	 * The realpath for the `git_dir` may be required in the recursion and is
+	 * cached for repeated use.
+	 */
+	char *real_gitdir;
+};
+
 static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 	struct index_state *istate, const char *path, int len,
 	struct untracked_cache_dir *untracked,
-	int check_only, int stop_at_first_file, const struct pathspec *pathspec);
+	int check_only, int stop_at_first_file, const struct pathspec *pathspec,
+	struct traversal_cache *cache);
 static int resolve_dtype(int dtype, struct index_state *istate,
 			 const char *path, int len);
 struct dirent *readdir_skip_dot_and_dotdot(DIR *dirp)
@@ -1852,7 +1864,8 @@ static enum path_treatment treat_directory(struct dir_struct *dir,
 	struct index_state *istate,
 	struct untracked_cache_dir *untracked,
 	const char *dirname, int len, int baselen, int excluded,
-	const struct pathspec *pathspec)
+	const struct pathspec *pathspec,
+	struct traversal_cache *cache)
 {
 	/*
 	 * WARNING: From this function, you can return path_recurse or you
@@ -1861,7 +1874,7 @@ static enum path_treatment treat_directory(struct dir_struct *dir,
 	 */
 	enum path_treatment state;
 	int matches_how = 0;
-	int nested_repo = 0, check_only, stop_early;
+	int check_only, stop_early;
 	int old_ignored_nr, old_untracked_nr;
 	/* The "len-1" is to strip the final '/' */
 	enum exist_status status = directory_exists_in_index(istate, dirname, len-1);
@@ -1893,16 +1906,37 @@ static enum path_treatment treat_directory(struct dir_struct *dir,
 
 	if ((dir->flags & DIR_SKIP_NESTED_GIT) ||
 		!(dir->flags & DIR_NO_GITLINKS)) {
+		/*
+		 * Determine if `dirname` is a nested repo by confirming that:
+		 * 1) we are in a nonbare repository, and
+		 * 2) `dirname` is not an immediate parent of `the_repository->gitdir`,
+		 *    which could occur if the git_dir or worktree location was
+		 *    manually configured by the user; see t2205 testcases 1-3 for
+		 *    examples where this matters
+		 */
+		int nested_repo;
 		struct strbuf sb = STRBUF_INIT;
 		strbuf_addstr(&sb, dirname);
 		nested_repo = is_nonbare_repository_dir(&sb);
+
+		if (nested_repo) {
+			char *real_dirname;
+			strbuf_addstr(&sb, ".git");
+			real_dirname = real_pathdup(sb.buf, 1);
+			if (!cache->real_gitdir)
+				cache->real_gitdir = real_pathdup(the_repository->gitdir, 1);
+
+			nested_repo = !!strcmp(real_dirname, cache->real_gitdir);
+			free(real_dirname);
+		}
 		strbuf_release(&sb);
-	}
-	if (nested_repo) {
-		if ((dir->flags & DIR_SKIP_NESTED_GIT) ||
-		    (matches_how == MATCHED_RECURSIVELY_LEADING_PATHSPEC))
-			return path_none;
-		return excluded ? path_excluded : path_untracked;
+
+		if (nested_repo) {
+			if ((dir->flags & DIR_SKIP_NESTED_GIT) ||
+				(matches_how == MATCHED_RECURSIVELY_LEADING_PATHSPEC))
+				return path_none;
+			return excluded ? path_excluded : path_untracked;
+		}
 	}
 
 	if (!(dir->flags & DIR_SHOW_OTHER_DIRECTORIES)) {
@@ -1925,7 +1959,7 @@ static enum path_treatment treat_directory(struct dir_struct *dir,
 				return path_excluded;
 
 			if (read_directory_recursive(dir, istate, dirname, len,
-						     untracked, 1, 1, pathspec) == path_excluded)
+						     untracked, 1, 1, pathspec, cache) == path_excluded)
 				return path_excluded;
 
 			return path_none;
@@ -2026,7 +2060,7 @@ static enum path_treatment treat_directory(struct dir_struct *dir,
 	untracked = lookup_untracked(dir->untracked, untracked,
 				     dirname + baselen, len - baselen);
 	state = read_directory_recursive(dir, istate, dirname, len, untracked,
-					 check_only, stop_early, pathspec);
+					 check_only, stop_early, pathspec, cache);
 
 	/* There are a variety of reasons we may need to fixup the state... */
 	if (state == path_excluded) {
@@ -2223,7 +2257,8 @@ static enum path_treatment treat_path_fast(struct dir_struct *dir,
 					   struct index_state *istate,
 					   struct strbuf *path,
 					   int baselen,
-					   const struct pathspec *pathspec)
+					   const struct pathspec *pathspec,
+					   struct traversal_cache *cache)
 {
 	/*
 	 * WARNING: From this function, you can return path_recurse or you
@@ -2245,7 +2280,7 @@ static enum path_treatment treat_path_fast(struct dir_struct *dir,
 		 * with check_only set.
 		 */
 		return read_directory_recursive(dir, istate, path->buf, path->len,
-						cdir->ucd, 1, 0, pathspec);
+						cdir->ucd, 1, 0, pathspec, cache);
 	/*
 	 * We get path_recurse in the first run when
 	 * directory_exists_in_index() returns index_nonexistent. We
@@ -2261,13 +2296,14 @@ static enum path_treatment treat_path(struct dir_struct *dir,
 				      struct index_state *istate,
 				      struct strbuf *path,
 				      int baselen,
-				      const struct pathspec *pathspec)
+				      const struct pathspec *pathspec,
+				      struct traversal_cache *cache)
 {
 	int has_path_in_index, dtype, excluded;
 
 	if (!cdir->d_name)
 		return treat_path_fast(dir, cdir, istate, path,
-				       baselen, pathspec);
+				       baselen, pathspec, cache);
 	if (is_dot_or_dotdot(cdir->d_name) || !fspathcmp(cdir->d_name, ".git"))
 		return path_none;
 	strbuf_setlen(path, baselen);
@@ -2329,7 +2365,7 @@ static enum path_treatment treat_path(struct dir_struct *dir,
 		strbuf_addch(path, '/');
 		return treat_directory(dir, istate, untracked,
 				       path->buf, path->len,
-				       baselen, excluded, pathspec);
+				       baselen, excluded, pathspec, cache);
 	case DT_REG:
 	case DT_LNK:
 		if (pathspec &&
@@ -2530,7 +2566,8 @@ static void add_path_to_appropriate_result_list(struct dir_struct *dir,
 static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 	struct index_state *istate, const char *base, int baselen,
 	struct untracked_cache_dir *untracked, int check_only,
-	int stop_at_first_file, const struct pathspec *pathspec)
+	int stop_at_first_file, const struct pathspec *pathspec,
+	struct traversal_cache *cache)
 {
 	/*
 	 * WARNING: Do NOT recurse unless path_recurse is returned from
@@ -2553,7 +2590,7 @@ static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 	while (!read_cached_dir(&cdir)) {
 		/* check how the file or directory should be treated */
 		state = treat_path(dir, untracked, &cdir, istate, &path,
-				   baselen, pathspec);
+				   baselen, pathspec, cache);
 		dir->visited_paths++;
 
 		if (state > dir_state)
@@ -2568,7 +2605,7 @@ static enum path_treatment read_directory_recursive(struct dir_struct *dir,
 			subdir_state =
 				read_directory_recursive(dir, istate, path.buf,
 							 path.len, ud,
-							 check_only, stop_at_first_file, pathspec);
+							 check_only, stop_at_first_file, pathspec, cache);
 			if (subdir_state > dir_state)
 				dir_state = subdir_state;
 
@@ -2642,7 +2679,8 @@ int check_dir_entry_contains(const struct dir_entry *out, const struct dir_entry
 static int treat_leading_path(struct dir_struct *dir,
 			      struct index_state *istate,
 			      const char *path, int len,
-			      const struct pathspec *pathspec)
+			      const struct pathspec *pathspec,
+			      struct traversal_cache *cache)
 {
 	struct strbuf sb = STRBUF_INIT;
 	struct strbuf subdir = STRBUF_INIT;
@@ -2694,7 +2732,8 @@ static int treat_leading_path(struct dir_struct *dir,
 		strbuf_reset(&subdir);
 		strbuf_add(&subdir, path+prevlen, baselen-prevlen);
 		cdir.d_name = subdir.buf;
-		state = treat_path(dir, NULL, &cdir, istate, &sb, prevlen, pathspec);
+
+		state = treat_path(dir, NULL, &cdir, istate, &sb, prevlen, pathspec, cache);
 
 		if (state != path_recurse)
 			break; /* do not recurse into it */
@@ -2967,6 +3006,9 @@ int read_directory(struct dir_struct *dir, struct index_state *istate,
 		   const char *path, int len, const struct pathspec *pathspec)
 {
 	struct untracked_cache_dir *untracked;
+	struct traversal_cache cache = {
+		.real_gitdir = NULL,
+	};
 
 	trace2_region_enter("dir", "read_directory", istate->repo);
 	dir->visited_paths = 0;
@@ -2984,8 +3026,10 @@ int read_directory(struct dir_struct *dir, struct index_state *istate,
 		 * e.g. prep_exclude()
 		 */
 		dir->untracked = NULL;
-	if (!len || treat_leading_path(dir, istate, path, len, pathspec))
-		read_directory_recursive(dir, istate, path, len, untracked, 0, 0, pathspec);
+	if (!len || treat_leading_path(dir, istate, path, len, pathspec, &cache)) {
+		read_directory_recursive(dir, istate, path, len, untracked, 0, 0, pathspec, &cache);
+	}
+	FREE_AND_NULL(cache.real_gitdir);
 	QSORT(dir->entries, dir->nr, cmp_dir_entry);
 	QSORT(dir->ignored, dir->ignored_nr, cmp_dir_entry);
 
