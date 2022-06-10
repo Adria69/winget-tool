@@ -33,7 +33,8 @@ struct helper_data {
 		check_connectivity : 1,
 		no_disconnect_req : 1,
 		no_private_update : 1,
-		object_format : 1;
+		object_format : 1,
+		get : 1;
 
 	/*
 	 * As an optimization, the transport code may invoke fetch before
@@ -210,6 +211,8 @@ static struct child_process *get_helper(struct transport *transport)
 			data->no_private_update = 1;
 		} else if (starts_with(capname, "object-format")) {
 			data->object_format = 1;
+		} else if (!strcmp(capname, "get")) {
+			data->get = 1;
 		} else if (mandatory) {
 			die(_("unknown mandatory capability %s; this remote "
 			      "helper probably needs newer version of Git"),

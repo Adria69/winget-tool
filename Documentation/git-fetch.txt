@@ -13,6 +13,7 @@ SYNOPSIS
 'git fetch' [<options>] <group>
 'git fetch' --multiple [<options>] [(<repository> | <group>)...]
 'git fetch' --all [<options>]
+'git fetch' --bundle-uri=<uri> [<options>]
 
 
 DESCRIPTION
